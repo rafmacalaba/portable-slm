@@ -91,9 +91,10 @@ used to bypass managed Chrome policy.
 - **Adjacent development-data task (step 4):** data-quality triage is proposed, not implemented.
   Geospatial metadata, questionnaire design, sampling guidance and interviewer support are future
   task packs, not current capabilities.
-- **Distribution:** code license is now MIT. Public GitHub repository and npm publication remain
-  pending. npm CLI is not authenticated on this machine. Review each model license separately;
-  package does not bundle weights. Browser model storage does not migrate between origins.
+- **Distribution:** public source is live at https://github.com/rafmacalaba/portable-slm under MIT.
+  npm package preparation passes dry-run; publication is blocked until npm CLI authentication is
+  configured. Review each model license separately; package does not bundle weights. Browser model
+  storage does not migrate between origins.
 - **Model-catalog expansion:** each added model needs a pinned file, verified checksum, license and
   device qualification. User-supplied URLs currently work only for pinned models.
 
