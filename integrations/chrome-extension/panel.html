@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en"><head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Ask Portable SLM</title>
+  <style>
+    :root { font-family: system-ui,sans-serif; color-scheme: light dark; }
+    body { margin: 1rem; min-width: 240px; }
+    label { display: block; margin: .6rem 0; }
+    select,textarea { width:100%; box-sizing: border-box; font:inherit; }
+    textarea { min-height: 4rem; }
+    button,select { min-height:2.5rem; font:inherit; margin:.2rem .2rem .2rem 0; }
+    #status { white-space:pre-wrap; }
+    #answer, #context, #events { white-space:pre-wrap; overflow-wrap:anywhere; max-height: 14rem; overflow:auto; }
+    #events { font-size:.8rem; }
+    #answer { border-left:3px solid #3949ab; padding-left:.6rem; }
+    .error { color:#c62828; }
+  </style>
+</head><body>
+  <h1>Ask Portable SLM</h1>
+  <p id="status" role="status" aria-live="polite">Starting…</p>
+  <label>Model <select id="model"></select></label>
+  <button id="download" type="button">Download</button>
+  <label>Or import a GGUF file <input id="import" type="file" accept=".gguf" /></label>
+  <button id="load" type="button">Load locally</button>
+  <p>Context stays on your device unless you enable online tools.</p>
+  <button id="selection" type="button">Use selected text</button>
+  <button id="page" type="button">Use page text</button>
+  <details><summary>Context to send to local model</summary><pre id="context"></pre></details>
+  <label for="prompt">Question</label>
+  <textarea id="prompt" placeholder="Ask about the selected text…"></textarea>
+  <label><input id="tools" type="checkbox" checked /> Allow offline tools (date/time, calculator)</label>
+  <label><input id="online" type="checkbox" /> Also allow Wikipedia search (sends query online)</label>
+  <button id="ask" type="button">Ask locally</button>
+  <h2>Answer</h2><p id="answer" aria-live="polite"></p>
+  <details><summary>Tool activity</summary><pre id="events"></pre></details>
+  <script type="module" src="./panel.js"></script>
+</body></html>

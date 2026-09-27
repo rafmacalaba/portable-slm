@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="icon" href="data:," />
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <title>Portable SLM</title>
+    <style>
+      :root { font-family: system-ui, sans-serif; color-scheme: light dark; }
+      body { max-width: 44rem; margin: 0 auto; padding: 1rem; }
+      h1 { font-size: 1.3rem; margin: 0 0 0.25rem; }
+      fieldset { border: 1px solid color-mix(in srgb, CanvasText 25%, Canvas); border-radius: 0.5rem; margin: 0 0 0.75rem; }
+      label { display: block; margin: 0.35rem 0; }
+      select, button, textarea { font: inherit; }
+      select { width: 100%; min-height: 2.75rem; }
+      button { padding: 0.5rem 0.9rem; min-height: 2.75rem; margin: 0.2rem 0.2rem 0.2rem 0; }
+      .file-button { display: inline-block; }
+      #log { list-style: none; padding: 0; display: grid; gap: 0.5rem; }
+      #log li { padding: 0.5rem 0.75rem; border-radius: 0.5rem; white-space: pre-wrap; }
+      #log .user { background: color-mix(in srgb, CanvasText 10%, Canvas); justify-self: end; }
+      #log .assistant { border: 1px solid color-mix(in srgb, CanvasText 25%, Canvas); }
+      #log .tool { font-size: 0.85rem; opacity: 0.85; border-left: 3px solid #3949ab; }
+      #log .meta { font-size: 0.8rem; opacity: 0.7; display: block; margin-top: 0.25rem; }
+      form { display: flex; gap: 0.5rem; align-items: end; }
+      textarea { flex: 1; min-height: 3rem; }
+      progress { width: 100%; }
+      #download-log, #chat-log { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 12rem; overflow-y: auto; }
+      #embedded-view[hidden], [hidden] { display: none !important; }
+      #consumer-content label { display: block; margin: .6rem 0; }
+      #consumer-content textarea { box-sizing: border-box; width: 100%; min-height: 10rem; }
+      #consumer-content .scroll { overflow-x: auto; }
+      #consumer-content table { width: 100%; border-collapse: collapse; }
+      #consumer-content td, #consumer-content th { padding: .3rem; text-align: left; border-bottom: 1px solid #888; }
+      .error { color: #c62828; }
+      small { opacity: 0.75; }
+      .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Portable SLM</h1>
+      <p id="status" role="status" aria-live="polite">Starting…</p>
+      <p><small id="env"></small></p>
+      <p>
+        <a href="./nada.html" data-consumer="nada" hidden>NADA study Q&amp;A</a>
+        <a href="./review.html" data-consumer="review" hidden>Metadata review</a>
+        <a href="./benchmark.html" data-consumer="benchmark" hidden>Benchmark</a>
+        <button type="button" data-view="nada" hidden>NADA study Q&amp;A</button>
+        <button type="button" data-view="review" hidden>Metadata review</button>
+        <button type="button" data-view="benchmark" hidden>Benchmark</button>
+      </p>
+    </header>
+
+    <section id="embedded-view" hidden aria-label="Selected Portable SLM consumer">
+      <button id="back-to-chat" type="button">Back to chat</button>
+      <p><small>Views inside Hugging Face share this app's already-installed model.</small></p>
+      <div id="consumer-content"></div>
+    </section>
+
+    <fieldset id="model-manager">
+      <legend>Model</legend>
+      <label>Model <select id="model"></select></label>
+      <p id="storage-info" role="status" aria-live="polite">Checking model storage…</p>
+      <label>Engine
+        <select id="engine">
+          <option value="auto">Automatic (CPU on iPhone)</option>
+          <option value="webgpu">WebGPU (faster, uses more memory)</option>
+          <option value="cpu">CPU (uses less memory)</option>
+        </select>
+      </label>
+      <label>Maximum reply length
+        <select id="max-tokens">
+          <option value="128">Short (128 tokens)</option>
+          <option value="256">Medium (256 tokens)</option>
+          <option value="512">Long (512 tokens, uses more memory)</option>
+        </select>
+      </label>
+      <label for="mirror">Alternate model mirror (optional HTTPS URL, verified by SHA-256)</label>
+      <input id="mirror" type="url" placeholder="https://models.example.org/model.gguf" style="box-sizing:border-box;width:100%;font:inherit;min-height:2.75rem" />
+      <button id="load" type="button">Load</button>
+      <button id="download" type="button">Download</button>
+      <label class="file-button">
+        <span class="sr-only">Import model file</span>
+        <input id="import" type="file" accept=".gguf" />
+      </label>
+      <button id="remove" type="button">Remove</button>
+      <progress id="progress" max="1" value="0" hidden aria-label="Model progress"></progress>
+      <details id="diagnostics">
+        <summary>Download log</summary>
+        <pre id="download-log" aria-live="off"></pre>
+      </details>
+      <p><small>Offline: copy the model's .gguf file to this device (USB, SD card, Files) and choose it above.</small></p>
+    </fieldset>
+
+    <section aria-labelledby="offline-heading">
+      <h2 id="offline-heading">Offline readiness</h2>
+      <p id="offline-status" role="status" aria-live="polite">Checking app and model files…</p>
+      <button id="offline-check" type="button">Check again</button>
+      <p><small>Ready means all app files and this model are stored here. Browser storage may still be cleared later.</small></p>
+    </section>
+
+    <main>
+      <p>
+        <label><input id="use-tools" type="checkbox" /> Use tools (date/time and calculator work offline)</label>
+        <label><input id="allow-network" type="checkbox" disabled /> Also allow Wikipedia search (sends query online)</label>
+      </p>
+      <ol id="log" aria-live="polite"></ol>
+      <form id="chat">
+        <label for="prompt" class="sr-only">Message</label>
+        <textarea id="prompt" placeholder="Load a model to start…" disabled required></textarea>
+        <button id="send" type="submit" disabled>Send</button>
+        <button id="stop" type="button" hidden>Stop</button>
+      </form>
+      <details id="chat-diagnostics">
+        <summary>Chat diagnostics</summary>
+        <button id="copy-chat-log" type="button">Copy diagnostics</button>
+        <pre id="chat-log"></pre>
+      </details>
+    </main>
+    <script type="module" src="./main.js"></script>
+  </body>
+</html>

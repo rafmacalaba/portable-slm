@@ -1,0 +1,17 @@
+{
+  "status": "success",
+  "dataset": {
+    "idno": "Test001_OD",
+    "title": "Popstan Synthetic Household Survey 2023",
+    "metadata": {
+      "study_desc": {
+        "title_statement": {
+          "title": "Popstan Synthetic Household Survey 2023"
+        },
+        "study_info": {
+          "abstract": "The 2023 Popstan Synthetic Household Survey is a periodic national welfare monitoring survey conducted by the Popstan National Statistics Office. It is used to update the national poverty profile, based on the (indexed) national poverty line calculated in 2017. "
+        }
+      }
+    }
+  }
+}

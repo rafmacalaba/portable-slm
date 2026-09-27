@@ -1,0 +1,13 @@
+{
+  "manifest_version": 3,
+  "name": "Portable SLM (local)",
+  "description": "Ask a small local language model about selected page text, even offline.",
+  "version": "0.1.0",
+  "minimum_chrome_version": "121",
+  "permissions": ["sidePanel", "activeTab", "scripting", "unlimitedStorage"],
+  "host_permissions": ["https://huggingface.co/*", "https://*.hf.co/*", "https://en.wikipedia.org/*"],
+  "background": { "service_worker": "background.js" },
+  "side_panel": { "default_path": "panel.html" },
+  "action": { "default_title": "Ask Portable SLM" },
+  "content_security_policy": { "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self';" }
+}

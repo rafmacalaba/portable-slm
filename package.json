@@ -1,0 +1,57 @@
+{
+  "name": "portable-slm",
+  "version": "0.1.0",
+  "description": "UI-agnostic, offline-capable small language model runtime for the browser (WebGPU with WASM fallback).",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./src/index.d.ts",
+      "default": "./src/index.js"
+    },
+    "./metadata-widget": {
+      "types": "./integrations/metadata-widget.d.ts",
+      "default": "./integrations/metadata-widget.js"
+    },
+    "./metadata-context": {
+      "types": "./integrations/metadata-context.d.ts",
+      "default": "./integrations/metadata-context.js"
+    },
+    "./metadata-review": {
+      "types": "./integrations/metadata-review.d.ts",
+      "default": "./integrations/metadata-review.js"
+    },
+    "./nada-qa": {
+      "types": "./src/nada-qa.d.ts",
+      "default": "./src/nada-qa.js"
+    },
+    "./benchmark": "./bench/run.js",
+    "./benchmark-tasks": "./bench/tasks.js"
+  },
+  "files": ["src", "integrations/metadata-widget.js", "integrations/metadata-widget.d.ts", "integrations/metadata-context.js", "integrations/metadata-context.d.ts", "integrations/metadata-review.js", "integrations/metadata-review.d.ts", "examples/metadata-review.js", "bench"],
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "build:extension": "vite build --config integrations/chrome-extension/vite.config.js",
+    "test": "node --test test/",
+    "e2e": "npm run build && node e2e/offline.mjs",
+    "e2e:extension": "npm run build:extension && node e2e/extension.mjs"
+  },
+  "devDependencies": {
+    "puppeteer-core": "^25.12.0",
+    "vite": "^8.3.1"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/rafmacalaba/portable-slm.git"
+  },
+  "homepage": "https://github.com/rafmacalaba/portable-slm#readme",
+  "bugs": {
+    "url": "https://github.com/rafmacalaba/portable-slm/issues"
+  },
+  "dependencies": {
+    "@wllama/wllama": "3.6.1",
+    "@wllama/wllama-compat": "3.6.1"
+  }
+}

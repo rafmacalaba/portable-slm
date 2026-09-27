@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="icon" href="data:," />
+    <title>Portable SLM — phone test</title>
+    <style>
+      :root { font-family: system-ui, sans-serif; color-scheme: light dark; }
+      body { max-width: 40rem; margin: 0 auto; padding: 1rem; line-height: 1.4; }
+      h1 { font-size: 1.3rem; margin: 0 0 0.5rem; }
+      fieldset { border: 1px solid color-mix(in srgb, CanvasText 25%, Canvas); border-radius: 0.5rem; margin: 0 0 0.75rem; }
+      label { display: block; margin: 0.35rem 0; }
+      select, button { font: inherit; min-height: 2.75rem; }
+      select { width: 100%; }
+      button { padding: 0.5rem 0.9rem; margin: 0.25rem 0.25rem 0.25rem 0; }
+      #run { font-weight: 600; }
+      .warn { background: color-mix(in srgb, orange 25%, Canvas); padding: 0.5rem 0.75rem; border-radius: 0.5rem; }
+      .error { color: #c62828; }
+      progress { width: 100%; }
+      table { border-collapse: collapse; width: 100%; font-size: 0.9rem; }
+      td, th { text-align: left; padding: 0.25rem 0.4rem; border-bottom: 1px solid color-mix(in srgb, CanvasText 15%, Canvas); vertical-align: top; }
+      pre { white-space: pre-wrap; font-size: 0.8rem; background: color-mix(in srgb, CanvasText 6%, Canvas); padding: 0.5rem; border-radius: 0.5rem; max-height: 14rem; overflow: auto; }
+      small { opacity: 0.75; }
+    </style>
+  </head>
+  <body>
+    <h1>Portable SLM — phone test</h1>
+    <p><small>Runs a small model fully in this browser tab and measures whether it fits and how fast it is.
+      Tap <b>Run test</b>, then <b>Copy results</b> and send them back.</small></p>
+
+    <div id="crash" class="warn" hidden role="alert"></div>
+
+    <fieldset>
+      <legend>Device</legend>
+      <table id="env"><tbody></tbody></table>
+    </fieldset>
+
+    <fieldset>
+      <legend>Test settings</legend>
+      <label>Model <select id="model"></select></label>
+      <label>Engine
+        <select id="engine">
+          <option value="webgpu">WebGPU (faster, more memory)</option>
+          <option value="cpu">CPU (slower, less memory)</option>
+        </select>
+      </label>
+      <label>Context window
+        <select id="ctx">
+          <option value="2048">2K tokens</option>
+          <option value="4096">4K tokens</option>
+          <option value="8192" selected>8K tokens</option>
+          <option value="16384">16K tokens</option>
+        </select>
+      </label>
+      <button id="run" type="button">Run test</button>
+      <button id="copy" type="button">Copy results</button>
+      <button id="clear" type="button">Delete downloaded models</button>
+    </fieldset>
+
+    <p id="status" role="status" aria-live="polite">Idle.</p>
+    <progress id="progress" max="1" value="0" hidden aria-label="Download progress"></progress>
+
+    <fieldset>
+      <legend>Results</legend>
+      <table id="results">
+        <thead><tr><th>Run</th><th>Result</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </fieldset>
+
+    <details>
+      <summary>Log</summary>
+      <pre id="log"></pre>
+    </details>
+
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>
