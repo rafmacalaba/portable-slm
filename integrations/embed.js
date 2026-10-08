@@ -201,7 +201,7 @@ const TEMPLATE = `
 </div>
 `;
 
-function mount(root, { manifest, ai, version }) {
+function mount(root, { manifest, ai, version, base = window.location.origin }) {
   root.innerHTML = TEMPLATE;
   // Two declarations decide everything the panel can do: a manifest (authorized reads) and a record
   // id (which record). Neither is needed to mount — see mountMode() for the ladder.
@@ -697,7 +697,7 @@ function mount(root, { manifest, ai, version }) {
 export async function mountFromManifest(root) {
   const { manifest, assets, version, base } = await loadConfig(root);
   const ai = createLocalSLM({ assets });
-  const panel = mount(root, { manifest, ai, version });
+  const panel = mount(root, { manifest, ai, version, base });
   // Chrome last: it appends into the panel, so running it before the template write would have its
   // handles replaced immediately (which the observer would then fix, one re-render later).
   const detachChrome = mountChrome(root);

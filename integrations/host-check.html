@@ -39,7 +39,7 @@
   // same-origin check would only prove that this page's copy of the check passes.
   import {
     DEFAULT_MODEL, MODELS, allowsTask, buildHostTools, createLocalSLM, expand, fetchApp, fetchField,
-    fetchRecord, loadConfig,
+    fetchRecord, loadConfig, mountFromManifest,
   } from "./embed.js";
 
   const params = new URLSearchParams(location.search);
@@ -127,6 +127,37 @@
       // fetchField hands back a byte-capped { text, truncated } — the same string the prompt gets.
       const text = field.text.replace(/\s+/g, " ");
       return `${pointers[0].pointer} → ${text.slice(0, 44)}${text.length > 44 ? "…" : ""}${field.truncated ? " [capped]" : ""}`;
+    });
+    // Every helper above is called directly. The panel calls the same helpers through its own mount — a
+    // path this page never exercised, which is how a ReferenceError inside mount() shipped while every
+    // helper check passed. So mount a panel here and use the seam a host actually uses.
+    await check(rows, "the panel's own context path answers", async () => {
+      const isRecord = Boolean(manifest.context?.record?.url);
+      if (isRecord && !sid) throw skip("no sid supplied — a record mount needs one to fetch");
+      const host = document.createElement("div");
+      host.setAttribute("data-pslm", "");
+      host.hidden = true;
+      if (declared) host.dataset.manifest = declared;
+      if (sid) host.dataset.recordId = sid;
+      document.body.append(host);
+      let panel;
+      try {
+        panel = await mountFromManifest(host);
+        const chat = host.querySelector("pslm-chat");
+        if (!chat) throw new Error("the mount produced no pslm-chat element");
+        if (typeof chat.onContext !== "function") throw new Error("the mount set no context provider");
+        const text = await chat.onContext();
+        if (typeof text !== "string" || !text.trim()) throw new Error("the panel's context path returned nothing");
+        const bytes = new TextEncoder().encode(text).length;
+        // Compare against the cap of the source this mount actually reads, not whichever one happens to
+        // be first in the manifest.
+        const cap = (isRecord ? manifest.context?.record?.maxBytes : manifest.context?.app?.maxBytes) ?? 32768;
+        if (bytes > cap + 4096) return { warn: `${bytes} bytes through the panel's seam — larger than the declared ${cap}` };
+        return `${bytes} bytes through the panel's own seam, cap ${cap}`;
+      } finally {
+        host.remove();
+        void panel;
+      }
     });
     // A tool the model can name but not reach is worse than no tool at all: the assistant promises
     // an answer, spends a round, and reports a failure the curator cannot interpret. Call every
