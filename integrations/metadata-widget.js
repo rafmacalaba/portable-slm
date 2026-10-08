@@ -1,5 +1,10 @@
-// Read-only widget for NADA and Metadata Editor frontends. Host supplies a loaded-capable
-// createLocalSLM instance and its own project/study id. No write or publish API is called.
+// Read-only demo widget for metadata frontends. Host supplies a loaded-capable createLocalSLM
+// instance and its own project/study id. No write or publish API is called.
+//
+// Its `source` option selects a LEGACY_SOURCES route default (see metadata-context.js) — the demo
+// predates the manifest. A new host passes its own `endpoint`/`params`/`unwrap` to
+// loadMetadataContext instead of adding a name here, or mounts the panel and declares the same
+// thing in `portable-slm.host.json`.
 import { suggestMetadata } from "./metadata-review.js";
 import { loadMetadataContext, loadPublicNadaDemoStudy } from "./metadata-context.js";
 

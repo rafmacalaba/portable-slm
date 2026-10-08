@@ -6,4 +6,10 @@ import { mountNada } from "./nada-view.js";
 
 if (import.meta.env.PROD && "serviceWorker" in navigator) navigator.serviceWorker.register("./sw.js");
 const ai = createLocalSLM({ assets: { wasm, compatWasm, compatWorker }, ctx: 4096 });
-mountNada(document.getElementById("nada-root"), ai);
+const params = new URLSearchParams(location.search || location.hash.slice(1));
+mountNada(document.getElementById("nada-root"), ai, {
+  source: params.get("source") === "nada" ? "nada" : "public-demo",
+  recordId: params.get("id") ?? "Test001_OD",
+  apiBase: params.get("apiBase") ?? undefined,
+  catalogBase: params.get("catalogBase") ?? undefined,
+});

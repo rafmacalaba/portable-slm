@@ -1,8 +1,9 @@
 # Laptop pilot: NADA and Metadata Editor
 
-Two supported paths. **No extension is required** for the public-data trial. Do not bypass an
-organization's browser-extension policy with an alternate Chrome build unless IT explicitly
-approves that test.
+This pilot demonstrates two host examples; it does not define Portable SLM's full scope. The SDK
+is reusable by other browser applications with their own context and task adapters. This pilot offers
+two paths. **No extension is required** for the public-data trial. Do not bypass an organization's
+browser-extension policy with an alternate Chrome build unless IT explicitly approves that test.
 
 ## Path A — browser demo, no extension
 
@@ -41,7 +42,7 @@ Space), then click **Load locally**.
 
 If a live authenticated Editor API integration is desired later, mount
 `integrations/metadata-widget.js` **within the Editor origin**. It reads one field through
-`GET /index.php/api/editor/json-field/{id}?path=...` using app authentication; no write endpoint.
+`GET /index.php/api/editor/json_field/{id}?path=...` using app authentication; no write endpoint.
 The extension and web demo alone cannot make NADA/Editor servers work offline.
 
 ## Verification and next input

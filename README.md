@@ -1,18 +1,96 @@
 # portable-slm
 
-**On-device AI capability service for software developers.** Embed this browser SDK in NADA,
-Metadata Editor or another web consumer: host app supplies authorized context and owns its workflow;
-Portable SLM manages verified GGUF storage, local inference and bounded tool calling. No cloud
-inference endpoint or extension required. Current consumers: web chat, grounded NADA study Q&A,
-metadata-review example and offline benchmark. This is an SDK/harness prototype—not yet a published
-package or a native integration in either host application.
+**On-device AI for browser applications, with chat as the product.** `<pslm-chat>` installs a
+SHA-256-verified model into the browser, streams answers locally, runs bounded tools, and takes its
+context from a single host-supplied callback. There is no cloud inference endpoint, no telemetry and
+no path from the assistant to a host write API.
 
+The package is layered so a host can adopt as little as it wants:
+
+| Layer | Artifact | What it is |
+|---|---|---|
+| **Chat (vanilla)** | `dist/chat.js`, `dist/chat.html`, `portable-slm/chat` | framework-free `<pslm-chat>` — install, import, load, stream, tools, approval, provenance. Runs with no host at all |
+| **Core SDK** | `portable-slm` | verified GGUF storage, resumable download, WebGPU/CPU inference, bounded tool loop |
+| **Host adapters** | `portable-slm/embed`, `metadata-*`, `nada-qa` | manifest-driven context and tasks for a specific host application |
+
+NADA and Metadata Editor are the worked examples — the reference for "a host builds on the vanilla
+component without forking it" — not exclusive targets. This is an SDK/harness prototype, not yet a
+published package or a native integration in either example host.
+
+- [Getting started — the three-command on-ramp for a host application](docs/GETTING_STARTED.md)
+- [Chat — vanilla usage, attributes, events, theming](docs/CHAT.md)
+- [Tools — defaults, network policy, authoring](docs/TOOLS.md)
+- [Context providers — how a host feeds the assistant](docs/CONTEXT_PROVIDERS.md)
+- [Making the assistant answer better — corpus, retrieval, evaluation, fine-tuning](docs/ANSWER_QUALITY.md)
 - [Architecture and boundaries](docs/ARCHITECTURE.md)
-- [Host integration: NADA and Metadata Editor](docs/HOST_INTEGRATION.md)
+- [Worked host integrations: NADA and Metadata Editor](docs/HOST_INTEGRATION.md)
+- [Host integration contract (`pslm-host/1`): manifest, embed levels, acceptance](docs/HOST_CONTRACT.md)
+- [Agent modes: declared tools, engine choice, model pins, MCP and search boundaries](docs/AGENT.md)
 - [Laptop pilot: NADA + Metadata Editor](docs/LAPTOP_PILOT.md)
+
+Three pages ship in the bundle and need no build step of their own: `chat.html` (the vanilla
+surface), `host-check.html` (run the acceptance checks on your own origin) and
+`framework-options.html` (compare implementation approaches — vanilla custom element, lit, Stencil,
+React, Vue, Svelte — and read the recommendation).
 - [Chrome extension guide](integrations/chrome-extension/README.md)
 - [Metadata consumer example](examples/README.md)
 - [Implementation status and next steps](docs/IMPLEMENTATION_PLAN.md)
+
+## When this is the right tool, and when it is not
+
+Portable SLM is a few hundred million parameters, quantized, in a browser tab. What it guarantees is
+about **where the computation happens**, not about how good the answer is: nothing you type leaves the
+machine, the model bytes are verified by checksum, and it runs with no network at all.
+
+| Right tool when | Wrong tool when |
+|---|---|
+| the material cannot leave the network — embargoed or confidential statistics | being wrong is costly: numbers, dates, quotes, decisions |
+| no model service is reachable — field laptops, blocked mirrors, air-gapped offices | the answer needs knowledge the supplied context does not contain |
+| a stated policy rules out pasting into a hosted assistant | long reasoning or multi-step analysis |
+| someone drafts short text and a human edits it | volume — hundreds of records to process |
+| a team needs to see what local inference actually is | anything autonomous, browsing, or acting without review |
+
+The rule that settles most arguments: **the answer must be recoverable from the context you supply.**
+In the snapshot → useful. Needs general knowledge → unreliable. Needs judgement → not a model's job.
+The grounding stamp and the *"not in the record"* behaviour exist to make the failure visible, not to
+fix the model — which is also why [answer quality is a corpus problem, not a model
+problem](docs/ANSWER_QUALITY.md).
+
+## Try the vanilla chat
+
+```sh
+npm install && npm run build:embed
+npx serve dist        # open http://localhost:3000/chat.html
+```
+
+One custom element, no host application, no bundler:
+
+```html
+<pslm-chat model="lfm2.5-350m-q4km" tools="offline"></pslm-chat>
+<script type="module" src="/portable-slm/chat.js"></script>
+```
+
+```js
+chat.onContext = async () => await myAuthorizedSnapshot();   // the only host seam
+```
+
+### Any page, no host at all
+
+The tabbed surface hosts embed works the same way with nothing declared. One script tag and one
+element is a complete, honest assistant on any page of any application:
+
+```html
+<div data-pslm style="width:24rem;height:32rem"></div>
+<script type="module" src="/portable-slm/embed.js"></script>
+```
+
+No manifest, no record, no knowledge of what the page is about: chat, install, import, build stamp.
+Portable SLM's own description of itself is always in the prompt (`composeContext`, append-only), so
+the assistant can say what it is and what it cannot do; a host's `onContext` text is added after it,
+never in place of it. Adding a manifest and a record id is what unlocks grounded answers about data,
+and a record-less page can declare `context.app` to be grounded in the application's own help text
+instead. The whole ladder is
+[`HOST_CONTRACT.md` §1b](docs/HOST_CONTRACT.md#1b-the-panel-degrades-it-does-not-refuse).
 
 ## Run
 
@@ -23,6 +101,10 @@ npm run dev                 # web chat: http://localhost:5173/
                             # metadata review: http://localhost:5173/review.html
                             # general benchmark: http://localhost:5173/benchmark.html
 npm run build && npm run preview  # offline-capable static web build, port 4173
+npm run build:embed    # dist/chat.js + dist/chat.html + dist/embed.js + host-check.html + embed-assets
+npm run scaffold -- --out <dir> --shape static|record   # a correct host starting point
+npm run pack:site -- --out <dir> --runtimes onnx|wllama|both   # the bundle subset a host serves itself
+                       # both builds also write dist/version.json (version, gitSha, builtAt)
 npm run build:extension     # unpacked desktop Chrome extension in dist-extension/
 npm test                    # SHA-256, store, agent/tool safety, example adapters
 npm run e2e                 # Chrome: mirror/import → chat + NADA Q&A + review + benchmark, offline
@@ -66,6 +148,29 @@ await ai.runAgent([{ role: "user", content: "Search Wikipedia for France." }], {
 });
 ```
 
+### OpenAI-shaped local chat API
+
+An optional adapter provides `chat.completions.create()` request/response shapes directly in JS:
+
+```js
+import { createOpenAICompatibleClient } from "./src/openai-compatible.js";
+
+const local = createOpenAICompatibleClient(ai);
+const completion = await local.chat.completions.create({
+  model,
+  messages: [{ role: "user", content: "Summarize this note." }],
+  max_completion_tokens: 128,
+});
+console.log(completion.choices[0].message.content);
+```
+
+Set `stream: true` to receive an `AsyncIterable` of completion chunks. This is an in-process
+browser API: no HTTP endpoint, API key or network request. It supports text messages and basic
+sampling/JSON options; use `ai.runAgent()` for declared tools. It does not claim full OpenAI API
+compatibility. Vision, audio and classifier runtimes stay outside this adapter; add each as an
+optional task module only after its model/runtime and browser limits are validated. Do not add
+placeholder models to the pinned GGUF catalog.
+
 The host must bundle JS/WASM locally and precache its app assets for offline use. Models and cache
 belong to the **browser origin**: the extension, this app and a third-party site each need their
 own import/download. See [`src/index.d.ts`](src/index.d.ts) for the complete API.
@@ -80,15 +185,19 @@ source quote from the model and checks that the quote occurs in the source. Unsu
 evidence is visibly marked **unverified**. Quote matching does *not* prove the interpretation is
 correct. This is read-only; no NADA account or write API. See `src/nada-qa.js`.
 
-## Integrating NADA or Metadata Editor
+## Worked integrations: NADA and Metadata Editor
 
 `integrations/metadata-context.js` reads one authorized Metadata Editor field or NADA study via
 same-origin APIs. `integrations/metadata-review.js` exports `suggestMetadata(ai, request)`;
 `src/nada-qa.js` exports `answerStudyQuestion(ai, study, question)`. Both load a local model and
 return read-only results for the host to review. Metadata Editor schema validation, save and publish
-remain host responsibilities. `/review.html` is a demo consumer, not a modification to either
-application. The initial `TEST-2030` record is **fictional sample input**. See
-[the host integration contract](docs/HOST_INTEGRATION.md).
+remain host responsibilities. `/review.html` is also a demo consumer; it can be bundled under a
+host's `/portable-slm/` path and launched with same-origin API context. Browser E2E covers this with
+fixtures. Local launch-link patches sit in sibling NADA and Metadata Editor clones only; no upstream
+integration is merged or approved. The initial `TEST-2030` record is **fictional sample input**.
+npm publication is disabled. A host that wants to verify instead of trust runs
+`/portable-slm/host-check.html` on its own origin ([acceptance page](docs/HOST_CONTRACT.md#7-acceptance-page)).
+See [the host integration contract](docs/HOST_INTEGRATION.md).
 
 ## Offline setup
 

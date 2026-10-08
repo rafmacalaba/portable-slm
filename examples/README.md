@@ -1,4 +1,8 @@
-# Read-only NADA / Metadata Editor consumer
+# Worked examples: NADA / Metadata Editor consumers
+
+These adapters show two host integrations; Portable SLM is not built exclusively for NADA or
+Metadata Editor. The core SDK is host-agnostic, and other browser apps can provide their own bounded
+context and task UI.
 
 **Primary NADA laptop workflow is study Q&A at `/nada.html`.** This page is an older generic
 metadata-suggestion example, not a requirement of either upstream app.
@@ -7,7 +11,7 @@ metadata-suggestion example, not a requirement of either upstream app.
 origin**, never from the AI host. It supports:
 
 - NADA `GET /index.php/api/catalog/{IDNo}` → bounded ID, title, abstract.
-- Metadata Editor `GET /index.php/api/editor/json-field/{id}?path=<JSON Pointer>` → one field
+- Metadata Editor `GET /index.php/api/editor/json_field/{id}?path=<JSON Pointer>` → one field
   (with `exclude_private_fields=1`).
 
 It uses the application's existing same-origin credentials and refuses cross-origin API bases.

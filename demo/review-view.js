@@ -5,7 +5,7 @@ const samples = {
   "metadata-editor": { idno: "TEST-2030", type: "microdata", identification: { title: "Household Survey" }, description: "Household survey of residents." },
 };
 
-export function mountReview(root, ai, { embedded = false } = {}) {
+export function mountReview(root, ai, { embedded = false, source, recordId = "", path, apiBase } = {}) {
   root.replaceChildren();
   if (embedded) {
     const heading = document.createElement("h2");
@@ -18,5 +18,13 @@ export function mountReview(root, ai, { embedded = false } = {}) {
   widget.id = "metadata-widget";
   root.append(widget);
   const hfHosted = /\.static\.hf\.space$/.test(location.hostname);
-  return mountMetadataWidget(widget, ai, { recordId: "TEST-2030", samples, showAppApi: !hfHosted });
+  const hostContext = Boolean(source && recordId);
+  return mountMetadataWidget(widget, ai, {
+    source: source ?? "nada",
+    recordId: recordId || "TEST-2030",
+    path,
+    apiBase,
+    samples: hostContext ? {} : samples,
+    showAppApi: !hfHosted,
+  });
 }

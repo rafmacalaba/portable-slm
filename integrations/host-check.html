@@ -1,0 +1,298 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Portable SLM — host acceptance checks</title>
+<style>
+  body{margin:0;font:15px/1.5 system-ui,sans-serif;color:#1c2b36;background:#f3f6f8}
+  header{padding:1rem 1.25rem;background:#fff;border-bottom:1px solid #d0d7de}
+  h1{margin:0;font-size:1.05rem} p{margin:.3rem 0 0;color:#57606a;font-size:.85rem;max-width:70ch}
+  main{padding:1rem;max-width:64rem;margin:0 auto}
+  pre{background:#fff;border:1px solid #d0d7de;border-radius:8px;padding:.9rem;overflow:auto;
+      font:12.5px/1.7 ui-monospace,SFMono-Regular,Menlo,monospace;white-space:pre}
+  .row{display:flex;gap:.6rem;align-items:center;flex-wrap:wrap;margin:.6rem 0}
+  button{font:inherit;padding:.4rem .8rem;border-radius:8px;border:1px solid #d0d7de;background:#f6f8fa;cursor:pointer}
+  input{font:inherit;padding:.35rem .5rem;border:1px solid #d0d7de;border-radius:8px}
+  code{background:#eaeef2;padding:.1rem .3rem;border-radius:4px}
+</style>
+</head>
+<body>
+<header>
+  <h1>Portable SLM — host acceptance checks</h1>
+  <p>Run this page from inside the host application, on the host origin, while signed in as a curator
+     with access to one project. It exercises the same bundle the panel loads, so a pass here is a
+     pass in the product. Checks it cannot run automatically are printed at the bottom as a
+     checklist to sign off by hand.</p>
+</header>
+<main>
+  <div class="row">
+    <label>Manifest <input id="manifest" size="40" placeholder="/portable-slm.host.json"></label>
+    <label>Record id <input id="sid" size="10" placeholder="6"></label>
+    <button id="run" type="button">Run checks</button>
+    <button id="copy" type="button">Copy report</button>
+  </div>
+  <pre id="report" aria-live="polite">Nothing run yet.</pre>
+</main>
+<script type="module">
+  // Every guard below is imported from the panel's own bundle: a second implementation of a
+  // same-origin check would only prove that this page's copy of the check passes.
+  import {
+    DEFAULT_MODEL, MODELS, allowsTask, buildHostTools, createLocalSLM, expand, fetchApp, fetchField,
+    fetchRecord, loadConfig,
+  } from "./embed.js";
+
+  const params = new URLSearchParams(location.search);
+  const $ = (id) => document.getElementById(id);
+  $("manifest").value = params.get("manifest") || "";
+  $("sid").value = params.get("sid") || "";
+  const skip = (message) => Object.assign(new Error(message), { skip: true });
+  const bytes = (text) => new TextEncoder().encode(text).length;
+
+  async function check(rows, label, fn) {
+    try {
+      const note = await fn();
+      if (note?.warn) rows.push([label, "warn", note.warn]);
+      else rows.push([label, "pass", typeof note === "string" ? note : ""]);
+    } catch (err) {
+      rows.push([label, err.skip ? "skip" : "fail", err.message]);
+    }
+  }
+
+  async function run() {
+    const rows = [];
+    $("report").textContent = "Running…";
+    const declared = $("manifest").value.trim();
+    let config;
+    try {
+      config = await loadConfig(declared || undefined);
+    } catch (err) {
+      $("report").textContent = `Manifest could not be loaded: ${err.message}\n\n`
+        + `Searched ./portable-slm.host.json relative to the bundle, or set ?manifest=<path>.`;
+      return;
+    }
+    const { manifest, assets, version, here, base } = config;
+    if (!manifest) {
+      $("report").textContent = `No host manifest at ${declared || "./portable-slm.host.json"}.\n\n`
+        + "That is a supported mode — a page with no manifest mounts the plain assistant and says it "
+        + "is ungrounded (HOST_CONTRACT.md §1b). There is nothing here to accept: no endpoints, no byte "
+        + "caps and no task allowlist have been declared. Serve a pslm-host/1 manifest and re-run.";
+      return;
+    }
+    const model = manifest.model || DEFAULT_MODEL;
+    const sid = $("sid").value.trim();
+
+    await check(rows, "build stamp", () => {
+      if (!version) return { warn: "no version.json — host is serving a bundle older than this build" };
+      return `${version.version}${version.gitSha ? `+${version.gitSha}` : ""} built ${version.builtAt}`;
+    });
+    await check(rows, "apiVersion match", () => `${manifest.apiVersion}`);
+    await check(rows, "app identity", () => (manifest.app?.name
+      ? `${manifest.app.name} ${manifest.app.version || ""}`.trim()
+      : { warn: "manifest declares no app.name" }));
+    await check(rows, "read-only contract", () => {
+      // The contract's whole security claim: a manifest has nowhere to put a credential. Check the
+      // serialised document, not just the schema, so an extra key cannot slip through.
+      const secret = Object.keys(manifest).concat(Object.keys(manifest.context || {}))
+        .filter((k) => /token|secret|password|apikey|api_key|authorization/i.test(k));
+      if (secret.length) throw new Error(`manifest carries credential-like keys: ${secret.join(", ")}`);
+      return `writeBack ${manifest.writeBack ?? false}, credentials ${manifest.context.credentials ?? "same-origin"}`;
+    });
+    await check(rows, "tasks allowlist", () => {
+      const on = ["pslm.chat", "pslm.suggest-field"].filter((t) => allowsTask(manifest, t));
+      if (!on.length) throw new Error("manifest allowlists no task — the panel would mount empty");
+      return on.join(", ");
+    });
+    await check(rows, "context.record same-origin", () => {
+      if (!manifest.context.record?.url) throw skip("no context.record declared — app-only manifest");
+      const url = new URL(manifest.context.record.url.replace(/\{id\}/g, "1"), location.origin);
+      if (url.origin !== location.origin) throw new Error(`${url.origin} is not ${location.origin}`);
+      return url.pathname;
+    });
+    await check(rows, "context.field pointers declared", () => {
+      const pointers = manifest.context?.field?.pointers;
+      if (!pointers?.length) return { warn: "no context.field.pointers — the Suggest tab has no fields" };
+      return `${pointers.length} declared`;
+    });
+
+    // Declaring a pointer is not the same as the endpoint answering. Only context.record was ever
+    // fetched here, so a field URL the application never served passed acceptance: the documented
+    // hyphenated json-field path reached the REST controller as the literal id "json-field" and
+    // returned HTTP 400 on every request. Read one real declared field, the way the Suggest tab will.
+    await check(rows, "context.field resolves for a declared pointer", async () => {
+      const pointers = manifest.context?.field?.pointers;
+      if (!pointers?.length) throw skip("no context.field.pointers declared");
+      if (!sid) throw skip("no sid supplied — pass ?sid=<record> to exercise a real field read");
+      const field = await fetchField(manifest, sid, pointers[0].pointer, base);
+      // fetchField hands back a byte-capped { text, truncated } — the same string the prompt gets.
+      const text = field.text.replace(/\s+/g, " ");
+      return `${pointers[0].pointer} → ${text.slice(0, 44)}${text.length > 44 ? "…" : ""}${field.truncated ? " [capped]" : ""}`;
+    });
+    // A tool the model can name but not reach is worse than no tool at all: the assistant promises
+    // an answer, spends a round, and reports a failure the curator cannot interpret. Call every
+    // declared tool through the panel's own builder — GET only, so running it here is safe.
+    await check(rows, "declared tools answer", async () => {
+      if (!manifest.tools?.length) throw skip("no tools declared");
+      if (!sid) throw skip("no sid supplied — declared tools are scoped to one record");
+      const pointer = manifest.context?.field?.pointers?.[0]?.pointer;
+      const calls = [];
+      for (const tool of buildHostTools(manifest, sid, { origin: location.origin, base })) {
+        const args = tool.parameters.properties?.pointer ? { pointer } : {};
+        calls.push(`${tool.name} → ${String(await tool.run(args)).replace(/\s+/g, " ").slice(0, 34)}…`);
+      }
+      return calls.join(" | ");
+    });
+    await check(rows, "cross-origin record url rejected", async () => {
+      try {
+        await fetchRecord({ context: { record: { url: "https://evil.example/{id}" } } }, sid || "1");
+      } catch (err) {
+        if (/same-origin/.test(err.message)) return "guard fired, no request sent";
+        throw err;
+      }
+      throw new Error("a cross-origin context url was accepted");
+    });
+    await check(rows, "context.app same-origin", () => {
+      if (!manifest.context.app?.url) throw skip("no context.app declared — only a record-less page needs one");
+      const url = new URL(expand(manifest.context.app.url, {}), location.origin);
+      if (url.origin !== location.origin) throw new Error(`${url.origin} is not ${location.origin}`);
+      return url.pathname;
+    });
+
+    // The only source a page with no record can be grounded in, so it is worth knowing it resolves and
+    // how much of it fits: help text that truncates is a help desk that forgot half the manual.
+    await check(rows, "app help readable and within maxBytes", async () => {
+      if (!manifest.context.app?.url) throw skip("no context.app declared");
+      const app = await fetchApp(manifest, base);
+      const max = manifest.context.app.maxBytes || 8192;
+      if (app.truncated) return { warn: `truncated at ${max} bytes — raise maxBytes or shorten the help text` };
+      return `${bytes(app.text)} / ${max}`;
+    });
+
+    await check(rows, "context.record within maxBytes", async () => {
+      if (!manifest.context.record?.url) throw skip("no context.record declared");
+      if (!sid) throw skip("no record id supplied — add ?sid=<id>");
+      const record = await fetchRecord(manifest, sid, base);
+      const max = manifest.context.record.maxBytes || 12288;
+      if (record.truncated) return { warn: `truncated at ${max} bytes — raise maxBytes or narrow the endpoint` };
+      return `${bytes(record.text)} / ${max}`;
+    });
+    await check(rows, "expired session is diagnosed", async () => {
+      if (!sid) throw skip("no record id supplied");
+      try {
+        await fetchRecord({ ...manifest, context: { record: { url: "/index.php/api/editor/json/{id}" } } }, "__not_a_project__" );
+      } catch (err) {
+        // Either a JSON error from the API or the HTML/login-page diagnosis. A raw JSON parse
+        // message would mean the content-type guard is not doing its job.
+        if (/JSON|Unexpected token|is not valid JSON/i.test(err.message)) {
+          throw new Error(`reported as a parse error, not an expired session: ${err.message}`);
+        }
+        return err.message.slice(0, 70);
+      }
+      return { warn: "an unknown record id returned successfully — the endpoint may not enforce access" };
+    });
+    await check(rows, "model mirror serves ranges", async () => {
+      if (!MODELS[model]) throw skip(`"${model}" is not a model this build pins — nothing to verify`);
+      if (!manifest.models?.mirror) return { warn: "no mirror declared — installs come from the upstream URL" };
+      const spec = MODELS[model];
+      const file = spec.files?.[0] || spec;
+      const relative = file.path ? `${model}/${file.path}` : file.file;
+      const url = new URL(`${manifest.models.mirror.replace(/\/$/, "")}/${relative}`, location.origin);
+      const res = await fetch(url.href, { headers: { Range: "bytes=0-0" }, credentials: "same-origin" });
+      if (res.status !== 206 && spec.files) return { warn: `ONNX parts not staged at mirror yet (${url.pathname} → HTTP ${res.status}); install falls back to pinned upstream` };
+      if (res.status !== 206) throw new Error(`${url.pathname} answered ${res.status}, not 206 — the store downloads in ranges`);
+      return `${url.pathname} 206`;
+    });
+    await check(rows, `model installed (${model})`, async () => {
+      if (!MODELS[model]) throw skip(`"${model}" is not a model this build pins`);
+      const status = await createLocalSLM({ assets }).status(model);
+      if (status.state !== "installed") {
+        return { warn: `${status.state} — install it once in the panel on this origin, then re-run` };
+      }
+      const verified = MODELS[model].files?.length
+        ? `${MODELS[model].files.length} SHA-256-verified files`
+        : `sha256 ${MODELS[model].sha256.slice(0, 12)}…`;
+      return `${MODELS[model].label} · ${verified} · ${status.engine || "not loaded"}`;
+    });
+    await check(rows, "app shell cached offline", async () => {
+      // The Cache API is unavailable on a plain-http LAN address, which is exactly how a laptop
+      // pilot is run — report the reason instead of a crash.
+      if (!globalThis.isSecureContext || !caches) throw skip("Cache API needs a secure context (https or localhost)");
+      const keys = (await caches.keys()).filter((k) => k.startsWith("portable-slm-shell-"));
+      if (!keys.length) throw skip("no shell cache — open /portable-slm/ once to install the app shell, then re-run");
+      const cache = await caches.open(keys[0]);
+      const files = ["./", "./embed.js", "./chat.js", "./embed-assets.json"];
+      const hits = [];
+      for (const file of files) {
+        if (await cache.match(new URL(file, here), { ignoreVary: true })) hits.push(file);
+      }
+      if (!hits.length) throw new Error(`${keys[0]} holds none of the bundle — the panel cannot load offline`);
+      if (hits.length < files.length) {
+        return { warn: `${keys[0]} holds ${hits.length}/${files.length} bundle files — the embed is not fully offline` };
+      }
+      return `${keys[0]} · ${hits.length} files`;
+    });
+
+    // Logging is optional, so this is a skip when the host has not declared an endpoint. When it has, the
+    // mechanical part of HOST_CONTRACT.md §logging is the auth boundary — and that is checkable from a
+    // page, by asking anonymously on purpose.
+    await check(rows, "log endpoint requires a session", async () => {
+      const url = params.get("log");
+      // No default: the log endpoint is the host's own (HOST_CONTRACT.md §logging), and guessing one is
+      // how the editor's route ended up hardcoded in a generic page — a 404 on every other host.
+      if (!url) throw skip("no ?log=<path> given — logging is optional (HOST_CONTRACT.md §logging)");
+      if (!new URL(url, location.origin).href.startsWith(location.origin)) throw new Error("the log url must be same-origin");
+      const probe = (credentials) => fetch(url, {
+        method: "POST", credentials,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ event: "host_check", note: "acceptance probe" }),
+      });
+      // No cookies on purpose: an endpoint that stores curator text must not accept an anonymous write.
+      const anonymous = await probe("omit");
+      if (anonymous.status === 404) throw skip(`no log endpoint at ${url} — logging is optional (HOST_CONTRACT.md §logging)`);
+      if (anonymous.ok) throw new Error(`${url} accepted an unauthenticated write (HTTP ${anonymous.status}) — it must require a curator session`);
+      if (anonymous.status !== 401 && anonymous.status !== 403) {
+        throw new Error(`${url} answered ${anonymous.status} to an anonymous probe; expected 401 or 403`);
+      }
+      const signedIn = await probe("same-origin");
+      if (!signedIn.ok) throw new Error(`${url} refused a signed-in probe (HTTP ${signedIn.status}) — logging would never record anything`);
+      // Whether the *stored* line kept the session's own user and time is not visible from here, because
+      // the log file is deliberately not readable over HTTP. That part stays a human check.
+      return `${url} · 401/403 anonymous, accepted signed-in — confirm the stored line shows YOUR user and the real time`;
+    });
+
+    const width = 36;
+    const counts = rows.reduce((all, [, status]) => ({ ...all, [status]: (all[status] || 0) + 1 }), {});
+    $("report").textContent = [
+      `pslm-host/1 acceptance — ${manifest.app?.name || "host"} @ ${location.host}`,
+      "",
+      ...rows.map(([label, status, note]) =>
+        `${(label + " ").padEnd(width, ".")} ${status.toUpperCase().padEnd(4)} ${note}`),
+      "",
+      `${counts.pass || 0} pass · ${counts.warn || 0} warn · ${counts.fail || 0} fail · ${counts.skip || 0} skip`,
+      "",
+      "By hand, on this origin:",
+      "  1. DevTools -> Network -> Offline, then answer one chat question.        [ ]",
+      "  2. Watch the Network tab during a suggestion: no request leaves the host [ ]",
+      "     origin except the declared context reads and the model mirror.",
+      "  3. Sign out, ask a question, confirm the panel says the session expired. [ ]",
+      "  4. If the host offers Fill this field: confirm the value lands in the form,",
+      "     is not saved, and the record version did not change.                 [ ]",
+    ].join("\n");
+  }
+
+  $("run").addEventListener("click", run);
+  $("copy").addEventListener("click", async () => {
+    const button = $("copy");
+    try {
+      await navigator.clipboard.writeText($("report").textContent);
+      button.textContent = "Copied";
+    } catch {
+      // No clipboard on a plain-http origin: say so, rather than appearing to have copied.
+      button.textContent = "Copy the text by hand";
+    }
+    setTimeout(() => { button.textContent = "Copy report"; }, 1800);
+  });
+  if (params.get("manifest") || params.get("sid")) run();
+</script>
+</body>
+</html>

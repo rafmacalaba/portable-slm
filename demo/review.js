@@ -6,4 +6,10 @@ import { mountReview } from "./review-view.js";
 
 if (import.meta.env.PROD && "serviceWorker" in navigator) navigator.serviceWorker.register("./sw.js");
 const ai = createLocalSLM({ assets: { wasm, compatWasm, compatWorker }, ctx: 4096 });
-mountReview(document.getElementById("review-root"), ai);
+const params = new URLSearchParams(location.search || location.hash.slice(1));
+mountReview(document.getElementById("review-root"), ai, {
+  source: params.get("source") === "metadata-editor" ? "metadata-editor" : undefined,
+  recordId: params.get("id") ?? "",
+  path: params.get("path") ?? undefined,
+  apiBase: params.get("apiBase") ?? undefined,
+});

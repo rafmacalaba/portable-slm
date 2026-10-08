@@ -1,10 +1,9 @@
 // Public, UI-agnostic SDK. Any UI (chat, forms, extraction, benchmark) talks only to this.
-// Inference runs in wllama's own Web Worker (llama.cpp → WebAssembly, WebGPU or CPU).
-import { Wllama } from "@wllama/wllama/esm/index.js"; // package "main" points to a missing file
+// Runtime is chosen by model: GGUF uses wllama; ONNX uses Transformers.js + ONNX Runtime Web.
 import { runAgent } from "./agent.js";
 import { defaultTools } from "./tools.js";
 import { DEFAULTS, MODELS } from "./models.js";
-import { downloadModel, importModel, modelBlob, modelStatus, removeModel } from "./store.js";
+import { clearModelFiles, downloadModel, importModel, modelBlob, modelStatus, removeModel } from "./store.js";
 
 export { DEFAULTS, MODELS, defaultTools, runAgent };
 
@@ -30,11 +29,9 @@ const persist = () => globalThis.navigator?.storage?.persist?.().catch(() => {})
 
 /** @param {import("./index.d.ts").LocalSLMOptions} options */
 export function createLocalSLM({ assets, ctx = DEFAULTS.ctx } = {}) {
-  if (!assets?.wasm || !assets?.compatWasm || !assets?.compatWorker) {
-    throw new Error("assets.wasm, assets.compatWasm and assets.compatWorker are required (self-hosted, for offline use)");
-  }
   let w = null;
-  let loaded = null; // { id, engine }
+  let transformers = null;
+  let loaded = null; // { id, engine, runtime, spec }
   let busy = false;
 
   const exclusive = async (fn) => {
@@ -48,27 +45,40 @@ export function createLocalSLM({ assets, ctx = DEFAULTS.ctx } = {}) {
   };
 
   async function unload() {
+    await transformers?.unload().catch(() => {});
+    transformers = null;
     await w?.exit().catch(() => {});
     w = null;
     loaded = null;
   }
 
   async function loadOn(spec, engine) {
+    if (!assets?.wasm || !assets?.compatWasm || !assets?.compatWorker) {
+      throw new Error("wllama assets are required for GGUF models (self-hosted, for offline use)");
+    }
     const blob = await modelBlob(spec);
+    const { Wllama } = await import("@wllama/wllama/esm/index.js"); // package "main" points to a missing file
     w = new Wllama({ default: assets.wasm }, { suppressNativeLog: true, logger: quietLogger });
     w.setCompat({ worker: assets.compatWorker, wasm: assets.compatWasm }); // used on Safari (no JSPI)
-    await w.loadModel([blob], { n_ctx: ctx, n_parallel: 1, ...(engine === "cpu" ? { n_gpu_layers: 0 } : {}) });
+    await w.loadModel([blob], { n_ctx: spec.ctx ?? ctx, n_parallel: 1, ...(engine === "cpu" ? { n_gpu_layers: 0 } : {}) });
   }
 
-  async function complete(messages, { tools, toolChoice, maxTokens, sampling = {}, signal }) {
+  async function complete(messages, { tools, toolChoice, maxTokens, sampling = {}, signal, onStreamToken, onReasonToken, onMetrics, seedThink }) {
     if (!loaded) throw new Error("No model loaded: call load() first");
     if (!Array.isArray(messages) || !messages.length || messages.some((m) =>
       !["system", "user", "assistant", "tool"].includes(m?.role) ||
       (m.role === "tool" ? typeof m.content !== "string" || typeof m.tool_call_id !== "string" :
         typeof m.content !== "string" && !(m.role === "assistant" && m.content === null && Array.isArray(m.tool_calls)))
     )) throw new Error("Invalid chat messages");
+    if (loaded.runtime === "transformers") {
+      // The agent loop passes the streaming/reasoning callbacks and the per-round `seedThink` flag
+      // (see src/agent.js). Swallowing them here is invisible for GGUF but silently disabled the
+      // reasoning trace, token streaming and live metrics for ONNX models on every tool-enabled
+      // turn — a tool turn is any non-greeting message, since offline utilities are always attached.
+      return transformers.complete(messages, { tools, maxTokens, sampling, signal, onStreamToken, onReasonToken, onMetrics, seedThink });
+    }
     const response = await w.createChatCompletion({
-      messages, tools, tool_choice: toolChoice, max_tokens: Math.min(maxTokens, ctx),
+      messages, tools, tool_choice: toolChoice, max_tokens: Math.min(maxTokens, loaded.spec?.ctx ?? ctx),
       ...DEFAULTS.sampling,
       ...Object.fromEntries(["temperature", "top_k", "seed"].filter((k) => sampling[k] !== undefined).map((k) => [k, sampling[k]])),
       stream: false, abortSignal: signal,
@@ -92,9 +102,9 @@ export function createLocalSLM({ assets, ctx = DEFAULTS.ctx } = {}) {
       };
     },
 
-    download(id, { sources, onProgress, onRetry, onFallback, signal } = {}) {
+    download(id, { sources, sourceForFile, onProgress, onRetry, onFallback, signal } = {}) {
       persist();
-      return exclusive(() => downloadModel(specOf(id), { sources, onProgress, onRetry, onFallback, signal }));
+      return exclusive(() => downloadModel(specOf(id), { sources, sourceForFile, onProgress, onRetry, onFallback, signal }));
     },
 
     importModel(file, { onProgress } = {}) {
@@ -110,26 +120,43 @@ export function createLocalSLM({ assets, ctx = DEFAULTS.ctx } = {}) {
         await unload();
         let chosen = await pickEngine(engine);
         try {
-          await loadOn(spec, chosen);
+          if (spec.runtime === "transformers") {
+            const { createTransformersEngine } = await import("./transformers-engine.js");
+            transformers = createTransformersEngine({ ctx: spec.ctx ?? ctx, assets });
+            await transformers.load(spec, { engine: chosen });
+          } else {
+            await loadOn(spec, chosen);
+          }
         } catch (err) {
           if (chosen !== "webgpu" || engine !== "auto") throw err;
           console.warn("WebGPU load failed, retrying on CPU:", err);
           await unload();
           chosen = "cpu";
-          await loadOn(spec, chosen);
+          if (spec.runtime === "transformers") {
+            const { createTransformersEngine } = await import("./transformers-engine.js");
+            transformers = createTransformersEngine({ ctx: spec.ctx ?? ctx, assets });
+            await transformers.load(spec, { engine: chosen });
+          } else {
+            await loadOn(spec, chosen);
+          }
         }
-        loaded = { id, engine: chosen };
+        loaded = { id, engine: chosen, runtime: spec.runtime || "wllama", spec };
         return { engine: chosen };
       });
     },
 
-    generate(messages, { onToken, signal, maxTokens = DEFAULTS.maxTokens, ...sampling } = {}) {
+    generate(messages, { onToken, onReasonToken, onMetrics, signal, maxTokens = DEFAULTS.maxTokens, ...sampling } = {}) {
       if (!loaded) return Promise.reject(new Error("No model loaded: call load() first"));
       if (!Array.isArray(messages) || messages.length === 0) return Promise.reject(new Error("messages must be a non-empty array"));
       for (const m of messages) {
         if (!ROLES.has(m?.role) || typeof m.content !== "string") {
           return Promise.reject(new Error('Each message needs role "system" | "user" | "assistant" and string content'));
         }
+      }
+      // Reasoning/metric callbacks are LFM-specific (marker-parsed). For wllama they must NOT be
+      // spread into `sampling` — the runtime would receive them as unknown sampling parameters.
+      if (loaded.runtime === "transformers") {
+        return exclusive(() => transformers.generate(messages, { onToken, onReasonToken, onMetrics, signal, maxTokens, ...sampling }));
       }
       return exclusive(async () => {
         let text = "";
@@ -140,7 +167,7 @@ export function createLocalSLM({ assets, ctx = DEFAULTS.ctx } = {}) {
         try {
           await w.createChatCompletion({
             messages,
-            max_tokens: Math.min(maxTokens, ctx),
+            max_tokens: Math.min(maxTokens, loaded.spec?.ctx ?? ctx),
             ...DEFAULTS.sampling,
             ...sampling,
             stream: true,
@@ -175,6 +202,11 @@ export function createLocalSLM({ assets, ctx = DEFAULTS.ctx } = {}) {
         await removeModel(spec);
       });
     },
+
+    clearModels: () => exclusive(async () => {
+      await unload();
+      return clearModelFiles();
+    }),
 
     unload: () => exclusive(unload),
   };

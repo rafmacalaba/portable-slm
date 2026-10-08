@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Portable SLM — vanilla chat</title>
+<style>
+  body{margin:0;font:15px/1.5 system-ui,sans-serif;color:#1c2b36;background:#f3f6f8}
+  header{padding:1rem 1.25rem;background:#fff;border-bottom:1px solid #d0d7de}
+  h1{margin:0;font-size:1.05rem}
+  p{margin:.3rem 0 0;color:#57606a;font-size:.85rem;max-width:60ch}
+  main{padding:1rem;max-width:56rem;margin:0 auto}
+  pslm-chat{height:72vh}
+  .policy{display:flex;gap:.5rem;align-items:center;font-size:.85rem;color:#57606a;margin:.75rem 0}
+</style>
+</head>
+<body>
+<header>
+  <h1>Portable SLM — vanilla chat</h1>
+  <p>Everything on this page is one custom element. Inference runs in this browser tab; the model
+     is verified by SHA-256 on install and no host application is involved.</p>
+</header>
+<main>
+  <label class="policy">
+    <input id="online" type="checkbox">
+    Allow online tools (each call still asks for approval and shows the exact arguments)
+  </label>
+  <pslm-chat id="chat" model="lfm2.5-350m-q4km" tools="offline"
+             system="You are a helpful assistant running entirely on the user's device. Say when you are unsure."></pslm-chat>
+</main>
+<script type="module">
+  import "./chat.js";
+  const chat = document.getElementById("chat");
+  document.getElementById("online").addEventListener("change", (e) => {
+    chat.toggleAttribute("allow-network", e.target.checked);
+    chat.setAttribute("tools", e.target.checked ? "all" : "offline");
+  });
+</script>
+</body>
+</html>

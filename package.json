@@ -24,23 +24,66 @@
       "types": "./src/nada-qa.d.ts",
       "default": "./src/nada-qa.js"
     },
+    "./openai-compatible": {
+      "types": "./src/openai-compatible.d.ts",
+      "default": "./src/openai-compatible.js"
+    },
     "./benchmark": "./bench/run.js",
-    "./benchmark-tasks": "./bench/tasks.js"
+    "./benchmark-tasks": "./bench/tasks.js",
+    "./embed": {
+      "default": "./integrations/embed.js"
+    },
+    "./logging": {
+      "types": "./integrations/logging.d.ts",
+      "default": "./integrations/logging.js"
+    },
+    "./host-contract": {
+      "default": "./integrations/host-contract.js"
+    },
+    "./chat": {
+      "default": "./integrations/chat.js"
+    },
+    "./chat-core": {
+      "default": "./integrations/chat-core.js"
+    }
   },
-  "files": ["src", "integrations/metadata-widget.js", "integrations/metadata-widget.d.ts", "integrations/metadata-context.js", "integrations/metadata-context.d.ts", "integrations/metadata-review.js", "integrations/metadata-review.d.ts", "examples/metadata-review.js", "bench"],
+  "files": [
+    "src",
+    "integrations/metadata-widget.js",
+    "integrations/metadata-widget.d.ts",
+    "integrations/metadata-context.js",
+    "integrations/metadata-context.d.ts",
+    "integrations/metadata-review.js",
+    "integrations/metadata-review.d.ts",
+    "examples/metadata-review.js",
+    "bench",
+    "integrations/embed.js",
+    "integrations/logging.js",
+    "integrations/logging.d.ts",
+    "dist",
+    "integrations/host-contract.js",
+    "integrations/chat.js",
+    "integrations/chat-core.js",
+    "integrations/chat.html",
+    "integrations/host-check.html"
+  ],
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "vite build && node tools/version-stamp.mjs",
     "preview": "vite preview",
     "build:extension": "vite build --config integrations/chrome-extension/vite.config.js",
     "test": "node --test test/",
     "e2e": "npm run build && node e2e/offline.mjs",
-    "e2e:extension": "npm run build:extension && node e2e/extension.mjs"
+    "e2e:extension": "npm run build:extension && node e2e/extension.mjs",
+    "build:embed": "vite build --config vite.embed.config.js && vite build --config vite.chat.config.js && vite build --config vite.logging.config.js && node tools/embed-assets.mjs && node tools/version-stamp.mjs",
+    "pack:site": "node tools/site-pack.mjs",
+    "scaffold": "node tools/scaffold.mjs"
   },
   "devDependencies": {
     "puppeteer-core": "^25.12.0",
     "vite": "^8.3.1"
   },
+  "private": true,
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -51,6 +94,7 @@
     "url": "https://github.com/rafmacalaba/portable-slm/issues"
   },
   "dependencies": {
+    "@huggingface/transformers": "4.3.1",
     "@wllama/wllama": "3.6.1",
     "@wllama/wllama-compat": "3.6.1"
   }

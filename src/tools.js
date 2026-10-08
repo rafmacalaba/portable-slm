@@ -64,6 +64,9 @@ export function defaultTools({ fetch: request = globalThis.fetch } = {}) {
       description: "Search Wikipedia for public facts. Sends the search query over the internet.",
       parameters: { type: "object", properties: { query: { type: "string", description: "Words to search for" } }, required: ["query"] },
       network: true,
+      // Snippets are disposable bulk: several hundred bytes of page teaser that no later turn needs
+      // verbatim. Opted in, so an oversized result is distilled rather than carried in the window.
+      digest: true,
       async run({ query }, { signal }) {
         const url = new URL("https://en.wikipedia.org/w/api.php");
         url.search = new URLSearchParams({ action: "query", list: "search", srsearch: query, srlimit: "3", format: "json", origin: "*" }).toString();

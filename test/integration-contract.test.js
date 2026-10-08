@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { answerStudyQuestion } from "../src/nada-qa.js";
-import { suggestMetadata } from "../integrations/metadata-review.js";
+import { suggestMetadata, reviewMessages, SUGGEST_DATAFILE_TASK } from "../integrations/metadata-review.js";
 
 const study = { idno: "S1", title: "Example survey", abstract: "Survey measures household welfare." };
 function mockAI(text) {
@@ -30,7 +30,8 @@ test("Metadata Editor task contract returns a structured draft without writing",
     modelId: "test-model",
   });
   assert.deepEqual(ai.calls.loaded, ["test-model"]);
-  assert.match(ai.calls.messages[1].content, /metadata-editor/);
+  assert.match(ai.calls.messages[1].content, /Task: pslm\.suggest-field\. Source: metadata-editor/);
+  assert.equal(result.task, "pslm.suggest-field");
   assert.equal(result.formatValid, true);
   assert.equal(result.suggestion, "Example survey on household welfare");
   assert.equal(ai.calls.options.response_format.json_schema.name, "metadata_review");
@@ -45,4 +46,29 @@ test("malformed model output stays an explicitly unvalidated draft", async () =>
   const draft = await suggestMetadata(metadataAI, { source: "nada", snapshot: { idno: "S1" } });
   assert.equal(draft.formatValid, false);
   assert.equal(draft.raw, "not JSON");
+});
+
+test("a task id the helper does not implement is an error, not a silent fallback", async () => {
+  const ai = mockAI('{"suggestion":"x","reason":"y"}');
+  await assert.rejects(
+    suggestMetadata(ai, { task: "pslm.chat", source: "nada", snapshot: { idno: "S1" } }),
+    /Unsupported task/,
+  );
+  assert.deepEqual(ai.calls.loaded, []);
+});
+
+test("datafile-description task prompts from file facts and variable labels, not invention", () => {
+  const snapshot = { target: "datafile.description", datafile: { file_name: "experts_survey_raw", var_count: 87 }, variables: [{ name: "age", label: "Age of respondent" }] };
+  const messages = reviewMessages("Metadata Editor", snapshot, SUGGEST_DATAFILE_TASK);
+  assert.match(messages[0].content, /datafile Description/);
+  assert.match(messages[0].content, /do not invent or mix counts/);
+  assert.match(messages[1].content, /Task: pslm\.suggest-datafile-description/);
+  assert.match(messages[1].content, /experts_survey_raw/);
+
+  const ai = mockAI('{"suggestion":"Raw expert survey file with 87 variables.","reason":"Names file and scale."}');
+  return suggestMetadata(ai, { task: SUGGEST_DATAFILE_TASK, source: "Metadata Editor", snapshot, modelId: "m1" })
+    .then((result) => {
+      assert.equal(result.formatValid, true);
+      assert.deepEqual(ai.calls.loaded, ["m1"]);
+    });
 });

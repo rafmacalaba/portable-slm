@@ -1,19 +1,19 @@
-import { loadPublicNadaDemoStudy } from "../integrations/metadata-context.js";
+import { loadMetadataContext, loadPublicNadaDemoStudy } from "../integrations/metadata-context.js";
 import { answerStudyQuestion, loadPublicStudy, savePublicStudy } from "../src/nada-qa.js";
 
 // One bounded public-study workflow. Host UI and data source are replaceable; inference is the
 // same local SDK as chat/review. The source snapshot is public and small enough for localStorage.
-export function mountNada(root, ai, { embedded = false } = {}) {
+export function mountNada(root, ai, { embedded = false, source = "public-demo", recordId = "Test001_OD", apiBase, catalogBase } = {}) {
   root.innerHTML = `
     <h2>NADA study Q&A</h2>
     <p>Ask about one public study. Answers must quote the title or abstract, or say UNKNOWN.
     A matching quote is a source check—not proof the interpretation is correct.</p>
     ${embedded ? "" : '<p><a href="./">Chat / model manager</a> · <a href="./benchmark.html">Benchmark</a></p>'}
     <label>Model <select id="nada-model"></select></label>
-    <label>Public NADA study ID <input id="nada-id" value="Test001_OD" /></label>
-    <button id="nada-fetch" type="button">Load study from public NADA (online)</button>
+    <label>NADA study ID <input id="nada-id" /></label>
+    <button id="nada-fetch" type="button">Load study ${source === "nada" ? "from this NADA instance" : "from public NADA demo"} (online)</button>
     <p id="nada-status" role="status" aria-live="polite">Checking saved study and model…</p>
-    <p>Only published metadata is fetched; no login or credentials. The last study is saved here for offline questions.</p>
+    <p>${source === "nada" ? "Uses this NADA instance's same-origin API and access controls; any session cookie goes only to NADA, never to the model." : "Fetches published metadata from the public demo without credentials."} The last study is saved here for offline questions.</p>
     <h3>Source text</h3><pre id="nada-source" style="white-space:pre-wrap;overflow-wrap:anywhere"></pre>
     <a id="nada-link" href="#" target="_blank" rel="noopener noreferrer" hidden>Open source in NADA</a>
     <label for="nada-question">Question about this study</label>
@@ -31,7 +31,10 @@ export function mountNada(root, ai, { embedded = false } = {}) {
   const render = () => {
     $("nada-source").textContent = study ? `${study.title}\n\n${study.abstract}` : "No saved study. Load one while online.";
     $("nada-link").hidden = !study;
-    if (study) $("nada-link").href = `https://nada-demo.ihsn.org/index.php/catalog/${encodeURIComponent(study.idno)}`;
+    if (study) {
+      const base = source === "nada" ? (catalogBase ?? "/index.php/catalog/") : "https://nada-demo.ihsn.org/index.php/catalog/";
+      $("nada-link").href = new URL(`${encodeURIComponent(study.idno)}`, new URL(base.endsWith("/") ? base : `${base}/`, location.origin)).href;
+    }
   };
   const updateModel = async (notify = true) => {
     const id = model.value;
@@ -41,9 +44,12 @@ export function mountNada(root, ai, { embedded = false } = {}) {
     if (notify && s.state !== "installed") $("nada-status").textContent = "Model missing. Install it in Chat / model manager, then return here.";
     else if (notify && !busy) $("nada-status").textContent = study ? "Study available locally. Ask online or in airplane mode." : "Model ready. Load a public study while online.";
   };
-  try { study = loadPublicStudy(); }
-  catch { $("nada-status").textContent = "Saved study was invalid; load it again while online."; }
-  if (study) $("nada-id").value = study.idno;
+  try {
+    const saved = loadPublicStudy();
+    study = source === "nada" && recordId && saved?.idno !== recordId ? null : saved;
+  } catch { $("nada-status").textContent = "Saved study was invalid; load it again while online."; }
+  $("nada-id").value = study?.idno ?? recordId;
+  if (source === "nada") $("nada-status").textContent = "Use this NADA instance's API. The fetched record will be saved here for offline Q&A.";
   render();
   updateModel().catch((err) => { $("nada-status").textContent = err.message; });
   model.addEventListener("change", () => updateModel());
@@ -51,9 +57,12 @@ export function mountNada(root, ai, { embedded = false } = {}) {
   $("nada-fetch").addEventListener("click", async () => {
     if (busy) return;
     busy = true; $("nada-fetch").disabled = true;
-    $("nada-status").textContent = "Fetching one public NADA study…";
+    $("nada-status").textContent = `Fetching one published NADA study ${source === "nada" ? "from this instance" : "from the public demo"}…`;
     try {
-      study = await loadPublicNadaDemoStudy($("nada-id").value.trim());
+      const id = $("nada-id").value.trim();
+      study = source === "nada"
+        ? await loadMetadataContext({ source: "nada", id, apiBase })
+        : await loadPublicNadaDemoStudy(id);
       render();
       try { savePublicStudy(study); $("nada-status").textContent = "Study saved locally for offline questions."; }
       catch { $("nada-status").textContent = "Study loaded, but browser could not save it. Keep this page open or free storage."; }

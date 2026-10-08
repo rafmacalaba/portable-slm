@@ -2,14 +2,16 @@
 
 ## Product focus
 
-Portable SLM is a **local AI capability service embedded by software developers**—a browser
-SDK/PWA for NADA, Metadata Editor and other development-data tools, not a standalone chatbot, cloud
-LLM API, native-only app or local server. The same browser runtime must work on laptop, iOS Safari
-and Android Chrome. Host apps supply authorized context and workflow; the harness supplies on-device
-inference, offline readiness and bounded tools. Host retains schema validation, review, save and
-publish authority. Local inference stays default both online and offline; network access is an
-explicit consumer choice for data refresh/sync or approved tools. App shell and model must be
-prepared in each browser origin/device before offline use.
+Portable SLM is a **general-purpose local AI capability service for browser applications**: a
+reusable SDK/PWA for software developers, including development-data tools. It is not a standalone
+chatbot, cloud LLM API, native-only app or local server. NADA and Metadata Editor are initial worked
+examples and priority consumers, not exclusive targets or core dependencies. Other web hosts can
+supply their own authorized context, tasks and workflow. The same browser runtime targets laptop,
+iOS Safari and Android Chrome. The harness supplies on-device inference, offline readiness and
+bounded tools; each host retains context access, schema validation, review, save and publish
+authority. Local inference stays default both online and offline; network access is an explicit
+consumer choice for data refresh/sync or approved tools. App shell and model must be prepared in
+each browser origin/device before offline use.
 
 Priority lifecycle: Metadata Editor curators create/import, document and validate records; the
 Editor can publish to NADA through its existing authorized flow; NADA catalogs and disseminates
@@ -59,11 +61,13 @@ Extension access and a separate local server are not dependencies.
    results; offline date/calculator and online Wikipedia with exact-query approval.
 4. **Four same-origin web consumers:** chat `/`, grounded NADA Q&A `/nada.html`, metadata review
    `/review.html`, general benchmark `/benchmark.html`. Public study snapshot supports offline
-   questions; benchmark resumes per case, exports JSON and compares 230M/350M.
+   questions; benchmark resumes per case, exports JSON and compares 230M/350M. Built app also passes
+   NADA and Metadata Editor same-origin API-fixture flows from a staged `/portable-slm/` subpath.
 5. **Third-party integration contract:** `integrations/metadata-context.js` reads one authorized
    Metadata Editor field or NADA study. `suggestMetadata()` and `answerStudyQuestion()` expose typed,
    read-only task calls; the mountable widget demonstrates a consumer. Unit/E2E use fixtures and
-   public NADA; no change to either upstream application was made.
+   public NADA. Local launch-link patches and staged bundles exist in sibling NADA/Metadata Editor
+   clones; neither upstream app stack nor live Editor API has been run/approved yet.
 6. **Desktop Chrome consumer:** MV3 side panel in `integrations/chrome-extension/`, same subsystem.
    E2E verifies local GGUF import, offline tool after restart; manual online Wikipedia consent
    also passed in Chrome for Testing.
@@ -79,12 +83,11 @@ used to bypass managed Chrome policy.
   readiness are separate. Readiness queries an active service worker before it controls the first
   page. E2E now checks cached-shell status before page reload; still verify browser-specific
   install/recovery and storage-eviction behavior.
-- **NADA / Metadata Editor integration (step 2):** browser SDK now has host-callable typed task
-  contracts: `answerStudyQuestion()` returns evidence status for a bounded NADA study snapshot;
-  `suggestMetadata()` returns a format-checked draft for a bounded NADA/Editor snapshot. The
-  public NADA demo fetch and offline reopen pass; some 350M answers are flagged unverified. A live
-  Metadata Editor instance and native host-app contribution remain untested. APIs must stay within
-  host permissions; no extension workaround.
+- **NADA / Metadata Editor integration (step 2):** browser SDK has host-callable typed task
+  contracts; NADA and Editor same-origin launch flows pass browser E2E against bounded API fixtures
+  from a staged `/portable-slm/` bundle. Local host-view patches exist in sibling working clones.
+  Full NADA/Editor services, live Editor API, and approved upstream integration remain untested;
+  patches are not merged. APIs must stay within host permissions; no extension workaround.
 - **Device matrix (step 3):** laptop Chrome offline E2E passes. User reports iPhone Safari stable
   with 230M/350M; 1.2B crashes and is not in the catalog. Android Chrome has not been tested.
   Capture per-device setup, offline reopen, reload/recovery and task outcomes before expanding.
@@ -92,9 +95,9 @@ used to bypass managed Chrome policy.
   Geospatial metadata, questionnaire design, sampling guidance and interviewer support are future
   task packs, not current capabilities.
 - **Distribution:** public source is live at https://github.com/rafmacalaba/portable-slm under MIT.
-  npm package preparation passes dry-run; publication is blocked until npm CLI authentication is
-  configured. Review each model license separately; package does not bundle weights. Browser model
-  storage does not migrate between origins.
+  npm publication is intentionally disabled; package remains private until a registry release is
+  requested. Current focus is bundling host integrations. Review each model license separately;
+  package does not bundle weights. Browser model storage does not migrate between origins.
 - **Model-catalog expansion:** each added model needs a pinned file, verified checksum, license and
   device qualification. User-supplied URLs currently work only for pinned models.
 

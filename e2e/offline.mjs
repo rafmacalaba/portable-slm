@@ -5,7 +5,7 @@
 // Usage: npm run e2e   (CHROME_PATH=..., KEEP_PROFILE=1 to reuse stored models)
 import assert from "node:assert/strict";
 import { spawn, execFileSync } from "node:child_process";
-import { createReadStream, existsSync, mkdirSync, readFileSync, rmSync, statSync } from "node:fs";
+import { cpSync, createReadStream, existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import puppeteer from "puppeteer-core";
 import { MODELS } from "../src/models.js";
@@ -42,6 +42,15 @@ const mirror = createServer((req, res) => {
 await new Promise((resolve) => mirror.listen(4180, resolve));
 
 async function startServer() {
+  // Stage the built PWA under a host application's own path to verify same-origin bundling.
+  const hostBundle = ".cache/portable-slm-host-bundle";
+  rmSync(hostBundle, { recursive: true, force: true });
+  cpSync("dist", hostBundle, { recursive: true });
+  mkdirSync("dist/portable-slm", { recursive: true });
+  cpSync(hostBundle, "dist/portable-slm", { recursive: true });
+  writeFileSync("dist/host-fixture.html", `<!doctype html><meta charset="utf-8"><title>Host fixture</title>
+    <a id="host-nada" href="./portable-slm/nada.html#source=nada&amp;id=Test002_OD&amp;apiBase=%2Findex.php%2Fapi%2F&amp;catalogBase=%2Findex.php%2Fcatalog%2F">Ask about this NADA study</a>
+    <a id="host-editor" href="./portable-slm/review.html#source=metadata-editor&amp;id=TEST-EDITOR-1&amp;apiBase=%2Findex.php%2Fapi%2F">Review this Editor field</a>`);
   const server = spawn("node_modules/.bin/vite", ["preview", "--port", String(PORT), "--strictPort"], { stdio: "pipe", env: { ...process.env, NO_COLOR: "1" } });
   await new Promise((resolve, reject) => {
     server.stdout.on("data", (d) => /Local/.test(String(d)) && resolve());
@@ -174,6 +183,54 @@ try {
   assert.match(await nada.$eval("#nada-source", (el) => el.textContent), /Popstan Synthetic Household Survey 2023/);
   console.log("  public NADA study saved for offline questions");
   await nada.close();
+
+  const hostNada = await browser.newPage();
+  hostNada.on("pageerror", (err) => console.log("  [host NADA page error]", err.message));
+  const hostStudy = JSON.parse(studyFixture);
+  hostStudy.dataset.idno = "Test002_OD";
+  await hostNada.setRequestInterception(true);
+  hostNada.on("request", (request) => request.url().includes("/index.php/api/catalog/Test002_OD")
+    ? request.respond({ status: 200, contentType: "application/json", body: JSON.stringify(hostStudy) })
+    : request.continue());
+  await hostNada.goto(`${URL}host-fixture.html`);
+  await hostNada.click("#host-nada");
+  await hostNada.waitForSelector("#nada-fetch");
+  await hostNada.waitForFunction(() => document.querySelector("#nada-model") && document.querySelector("#nada-model").value === "lfm2.5-350m-q4km");
+  assert.equal(await hostNada.$eval("#nada-id", (el) => el.value), "Test002_OD");
+  assert.match(await hostNada.$eval("#nada-source", (el) => el.textContent), /No saved study/);
+  await hostNada.click("#nada-fetch");
+  await hostNada.waitForFunction(() => document.querySelector("#nada-status").textContent.includes("Study saved"), { timeout: 20_000 });
+  await hostNada.type("#nada-question", "What is the survey used for?");
+  await hostNada.click("#nada-ask");
+  await hostNada.waitForFunction(() => /Evidence quote|Answer text|Evidence was not found|Model answered|Cannot verify/.test(document.querySelector("#nada-status").textContent), { timeout: 120_000 });
+  assert.ok((await hostNada.$eval("#nada-answer", (el) => el.textContent)).length > 0);
+  console.log("  NADA host bundle read same-origin API and answered with cached local model");
+  await hostNada.close();
+
+  const hostEditor = await browser.newPage();
+  hostEditor.on("pageerror", (err) => console.log("  [host Editor page error]", err.message));
+  const editorWrites = [];
+  await hostEditor.setRequestInterception(true);
+  hostEditor.on("request", (request) => {
+    if (request.url().includes("/index.php/api/editor/json-field/TEST-EDITOR-1")) {
+      return request.respond({ status: 200, contentType: "application/json", body: JSON.stringify({ status: "success", found: true, value: "Household survey" }) });
+    }
+    if (request.url().includes("/index.php/api/editor/") && request.method() !== "GET") editorWrites.push(request.url());
+    return request.continue();
+  });
+  await hostEditor.goto(`${URL}host-fixture.html`);
+  await hostEditor.click("#host-editor");
+  await hostEditor.waitForFunction(() => document.querySelector("#source")?.value === "metadata-editor");
+  assert.equal(await hostEditor.$eval("#record-id", (el) => el.value), "TEST-EDITOR-1");
+  await hostEditor.click("#read-api");
+  await hostEditor.waitForFunction(() => document.querySelector("#snapshot").value.includes("Household survey"), { timeout: 20_000 });
+  await hostEditor.click("#suggest");
+  await hostEditor.waitForFunction(() => /Suggestion ready|Could not create/.test(document.querySelector("#status").textContent), { timeout: 120_000 });
+  assert.match(await hostEditor.$eval("#status", (el) => el.textContent), /Suggestion ready/);
+  assert.deepEqual(editorWrites, []);
+  console.log("  Metadata Editor host bundle read one authorized field and returned draft without writes");
+  await hostEditor.close();
+
   const host = await browser.newPage();
   await host.goto(URL);
   await host.evaluate(() => {
