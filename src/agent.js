@@ -39,7 +39,8 @@ async function digestToolResult({ complete, name, content, signal }) {
         { role: "system", content: DIGEST_SYSTEM },
         { role: "user", content: `Tool: ${name}\nResult:\n${content}` },
       ],
-      { tools: [], maxTokens: DIGEST_MAX_TOKENS, signal, seedThink: false },
+      // Seeded for the same reason as every other round: unseeded, the brief would carry reasoning.
+      { tools: [], maxTokens: DIGEST_MAX_TOKENS, signal, seedThink: true },
     );
     return (choice.message?.content ?? "").trim().slice(0, DIGEST_MAX_CHARS) || null;
   } catch {
@@ -96,8 +97,14 @@ export async function runAgent({ complete, messages, tools = [], allowNetwork = 
   // One retry, whatever the reason it is needed: a reply that was not an answer is repaired once with
   // an instruction naming the failure, then reported honestly as incomplete if it happens again.
   let retried = false;
+  // The instruction sent to the repair round, so a reply that quotes it back is recognisable as a leak.
+  let lastRepair = null;
   // The text a refused tool call interrupted: kept so a retry that says nothing does not lose it.
   let refusedFragment = null;
+  // What a repair replaced, and why. A repair can come back worse than what it replaced — a leaked
+  // reasoning stream is long, well punctuated and passes every length check — so the earlier reply is kept
+  // and preferred when the retry is caught narrating.
+  let replacedByRepair = null;
   // One round past `maxRounds`, so a nudge always has somewhere to land. The answer-only round is
   // exactly where a long tool turn finishes, and an empty decode there must not be final.
   for (let round = 0; round <= maxRounds + 1; round++) {
@@ -109,13 +116,13 @@ export async function runAgent({ complete, messages, tools = [], allowNetwork = 
       type: "function", function: { name, description, parameters },
     }));
     const choice = await complete(history, { tools: toolSpecs, toolChoice: toolSpecs.length ? "auto" : "none", maxTokens, sampling, signal, onStreamToken: onToken, onReasonToken, onMetrics,
-      // Seed the reasoning block on EVERY round, not just the first. The model's own chat template ends
-      // its generation prompt at `<|im_start|>assistant` with no ` thinking` (confirmed against the
-      // pinned tokenizer_config.json), so nothing delimits reasoning from the answer unless we add the
-      // opener. Without it a post-tool round emitted its plan and its answer in one untagged stream and
-      // the plan reached the reader. A nudged retry is deliberately left unseeded: it asks for a direct
-      // answer, and forcing a reasoning block the model then refuses to close would return nothing.
-      seedThink: !retried });
+      // Seed the reasoning block on EVERY round, including retries. The model's own chat template ends its
+      // generation prompt at `<|im_start|>assistant` with no ` thinking` (confirmed against the pinned
+      // tokenizer_config.json), so nothing delimits reasoning from the answer unless we add the opener.
+      // Leaving a repair round unseeded was tried and reverted: the model reasons anyway, so its reasoning
+      // and its answer arrived as one untagged stream and the reader got pages of it. "It asks for a direct
+      // answer" was an assumption about the model; that it thinks anyway is an observation.
+      seedThink: true });
     const promptTokens = choice.usage?.prompt_tokens ?? null;
     const generatedTokens = choice.usage?.completion_tokens ?? null;
     if (promptTokens !== null) {
@@ -132,15 +139,25 @@ export async function runAgent({ complete, messages, tools = [], allowNetwork = 
       // Is this an answer, or the model stopping early? Only code can decide that reliably, and the
       // verdict drives the retry: empty (reasoned past its budget), plan-shaped (emitted the plan it was
       // about to act on), or truncated. One retry, then the verdict is reported as-is.
-      const verdict = assessCompleteness(text);
+      const verdict = assessCompleteness(text, { instruction: lastRepair ?? "" });
       if (!verdict.ok && !retried) {
         retried = true;
-        history.push({ role: "user", content: repairInstruction(verdict) });
+        lastRepair = repairInstruction(verdict);
+        replacedByRepair = { text, verdict };
+        history.push({ role: "user", content: lastRepair });
         continue;
+      }
+      // A repair caught narrating the prompt is worse than the reply it replaced: report the original, with
+      // the verdict that was true of it, rather than a wall of the model talking to itself. The reader still
+      // sees that the reply is incomplete — that is the whole point of carrying a verdict.
+      const final = verdict.reason === "narrating" && replacedByRepair ? replacedByRepair : { text, verdict };
+      const completeness = final.verdict ?? final.completeness;
+      if (verdict.reason === "narrating") {
+        onTool?.({ stage: "leaked", name: "reasoning", reason: "the repair round narrated the prompt" });
       }
       // Text already streamed via onStreamToken where the engine supports it; engines without
       // streaming render the complete text from the return value.
-      return { text, messages: history, toolRounds: round, usage, completeness: verdict };
+      return { text: final.text, messages: history, toolRounds: round, usage, completeness };
     }
     // A tool call on a round that was offered none: the model is still working, and the text it wrote is
     // the plan whose continuation we are about to discard — half a thought, not an answer. That is

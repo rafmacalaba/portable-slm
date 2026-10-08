@@ -335,10 +335,11 @@ test("surplus calls in one round still get a result, so the transcript stays one
   assert.deepEqual(results.slice(4).map((m) => m.tool_call_id), ["c5", "c6"]);
 });
 
-test("the reasoning block is seeded on every round, and left off for the nudge retry", async () => {
-  // The root cause of reasoning reaching the reader: the model's chat template ends its generation
-  // prompt at `<|im_start|>assistant` with no ` thinking`, so only a seeded round delimits reasoning
-  // from the answer. Round 1 must be seeded too, not just round 0.
+test("the reasoning block is seeded on every round, retries included", async () => {
+  // The model's chat template ends its generation prompt at `<|im_start|>assistant` with no ` thinking`,
+  // so only a seeded round delimits reasoning from the answer. A retry was once left unseeded on the
+  // assumption that it would answer directly; in production it reasoned anyway and the untagged stream
+  // reached the reader, so the seed is unconditional.
   const seeds = [];
   let round = 0;
   const r = await runAgent({
@@ -353,7 +354,7 @@ test("the reasoning block is seeded on every round, and left off for the nudge r
       return { message: { role: "assistant", content: "Done." } };
     },
   });
-  assert.deepEqual(seeds, [true, true, false]);
+  assert.deepEqual(seeds, [true, true, true]);
   assert.equal(r.text, "Done.");
 });
 
@@ -427,7 +428,7 @@ test("a tool call on the answer-only round is refused, and the model is asked to
   assert.equal(r.text, "Here is what I found…");
   assert.equal(round, 2);
   assert.match(rounds[1].last, /tool budget for this turn is spent/);
-  assert.equal(rounds[1].seed, false, "the retry asks for a direct answer, unseeded");
+  assert.equal(rounds[1].seed, true, "the retry is seeded too: unseeded rounds leak reasoning");
 });
 
 test("if the retry after a refused call also says nothing, the fragment is kept rather than lost", async () => {
@@ -484,4 +485,31 @@ test("a reply that is still not an answer after the repair is returned marked in
   assert.equal(r.text, "Let me check the next field as well.");
   assert.equal(r.completeness.ok, false);
   assert.equal(r.completeness.reason, "plan-shaped");
+});
+
+test("a repair that comes back narrating the prompt is discarded for the reply it replaced", async () => {
+  // Observed in production: a fragment triggered a repair, the repair round was unseeded, and the model's
+  // whole reasoning stream became the answer — long, well punctuated, and passing every length check. The
+  // leak is recognisable because it quotes the instruction, which is unique text, so the reply the repair
+  // replaced is preferred when that happens.
+  // A genuine fragment, so the repair does fire. (The polite closing the reader actually saw,
+  // "Let me know what you'd like to do!", is judged complete now — that false positive is what sent a real
+  // conversation into a repair round in the first place.)
+  const FRAGMENT = "Let me check the projects list as well.";
+  const LEAK = 'The user is saying my previous reply ended with "Let me check the projects list as well." and '
+    + "stated no answer. They want me to give an answer now using only what I already have. Looking at the "
+    + "context, I have information about the projects. Let me check the context again.";
+  const leaked = [];
+  let round = 0;
+  const r = await runAgent({
+    messages: [{ role: "user", content: "tell me about the projects" }],
+    maxRounds: 0,
+    tools: [],
+    complete: async () => ({ message: { role: "assistant", content: round++ === 0 ? FRAGMENT : LEAK } }),
+    onTool: (e) => leaked.push(e),
+  });
+  assert.equal(round, 2, "one repair round");
+  assert.equal(r.text, FRAGMENT, "the leaked stream must not reach the reader");
+  assert.equal(r.completeness.reason, "plan-shaped", "and the verdict still says it is not an answer");
+  assert.deepEqual(leaked, [{ stage: "leaked", name: "reasoning", reason: "the repair round narrated the prompt" }]);
 });

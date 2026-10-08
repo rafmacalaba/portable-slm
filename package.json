@@ -1,6 +1,6 @@
 {
   "name": "portable-slm",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "UI-agnostic, offline-capable small language model runtime for the browser (WebGPU with WASM fallback).",
   "type": "module",
   "exports": {

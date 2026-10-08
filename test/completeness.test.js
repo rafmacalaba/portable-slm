@@ -89,3 +89,18 @@ test("the marker names what went wrong, in the reader's words", () => {
   assert.match(describeIncomplete({ reason: "empty" }), /returned no answer/);
   assert.equal(describeIncomplete({ reason: null }), null);
 });
+
+test("polite closings are complete replies, not plans", () => {
+  // Observed in production and wrongly flagged, which sent the turn into a repair round whose unseeded
+  // retry leaked its reasoning. "Let me know" asks the READER to act; a plan names what the assistant will
+  // do. The distinction is the whole reason this file exists, so it is asserted with the exact strings.
+  for (const closing of [
+    "Let me know what you’d like to do!",
+    "Let me know if you need anything else.",
+    "Let me know if you want more detail on any of these.",
+  ]) {
+    assert.equal(assessCompleteness(closing).ok, true, closing);
+  }
+  // A real plan is still caught, which is the case this check was built for.
+  assert.equal(assessCompleteness("Let me check the geographic coverage field as well.").reason, "plan-shaped");
+});

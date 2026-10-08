@@ -8,6 +8,9 @@
 //      check the geographic coverage field as well." — which reached the reader as the whole reply;
 //   3. it was cut off mid-structure, leaving an unclosed code fence or a dangling connective.
 //
+//  4. it narrated the prompt back instead of answering, which is what a reasoning stream looks like when
+//     the round was not seeded with a think block.
+//
 // Prompt wording cannot be relied on to prevent these (docs/HARNESS.md: "if a rule matters, it lives in
 // code"). What code *can* do is refuse to present a fragment as an answer, and say why.
 //
@@ -21,7 +24,11 @@
 // is one repair generation and a marker, not a broken answer; raise `wholeReplyPlanChars` to trade the
 // other way.
 
-const PLAN_TAIL = /^\s*(?:let me|let'?s|i(?:'ll| will| should| need to| am going to| can(?: also)?)|next,? i|now i(?:'ll| will))\b/i;
+// `let me know` is a closing courtesy, not an action the assistant is about to take: "Let me know what
+// you'd like to do!" and "Let me know if you need anything else." are complete replies, and flagging them
+// as plans sent a real conversation into a repair round — which is how the leak below surfaced. A plan
+// names something the assistant will do; `know` names something the reader will do.
+const PLAN_TAIL = /^\s*(?:let me(?!\s+know\b)|let'?s|i(?:'ll| will| should| need to| am going to| can(?: also)?)|next,? i|now i(?:'ll| will))\b/i;
 const DANGLING_TAIL = /(?::|,|\band|\bthe|\bwith|\bto|\bbecause|\bso)\s*$/i;
 
 /** A reply this short that is one planning utterance has no findings in it. 240 chars is the
@@ -31,12 +38,18 @@ const WHOLE_REPLY_PLAN_CHARS = 240;
 
 /**
  * `{ ok, reason, evidence }`. `reason` is null when the answer is complete, otherwise one of
- * `empty` | `plan-shaped` | `truncated`. `evidence` is the text that decided it, for the repair
+ * `empty` | `plan-shaped` | `truncated` | `narrating`. `evidence` is the text that decided it, for the repair
  * instruction and for the log — a verdict a human cannot check is not worth having.
  */
-export function assessCompleteness(text, { wholeReplyPlanChars = WHOLE_REPLY_PLAN_CHARS } = {}) {
+export function assessCompleteness(text, { wholeReplyPlanChars = WHOLE_REPLY_PLAN_CHARS, instruction = "" } = {}) {
   const value = String(text ?? "").trim();
   if (!value) return { ok: false, reason: "empty", evidence: null };
+  // The model echoing our own instruction back means it is talking to itself, not to the reader — the
+  // observed shape of a leaked reasoning stream. The instruction is unique text, so this is exact rather
+  // than a guess about tone, and it catches a round the length and punctuation checks would pass.
+  if (instruction && echo(value, instruction)) {
+    return { ok: false, reason: "narrating", evidence: value.slice(0, 160) };
+  }
   // An odd number of fences means a code block was opened and the decode stopped inside it. Only
   // fences, not brackets: prose legitimately quotes a lone `{id}`, and JSON answers are already
   // shape-checked by the task layer (metadata-review), so a bracket count would mostly add noise.
@@ -53,6 +66,12 @@ export function assessCompleteness(text, { wholeReplyPlanChars = WHOLE_REPLY_PLA
     return { ok: false, reason: "truncated", evidence: tail.trim().slice(-60) };
   }
   return { ok: true, reason: null, evidence: null };
+}
+
+/** Does `value` quote `instruction` back — i.e. is the model narrating the prompt rather than answering? */
+function echo(value, instruction) {
+  const needle = String(instruction).replace(/^[^"]*"/, "").trim().slice(0, 40).toLowerCase();
+  return needle.length >= 20 && value.toLowerCase().includes(needle);
 }
 
 /**
@@ -77,5 +96,6 @@ export function describeIncomplete({ reason, evidence } = {}) {
   }
   if (reason === "truncated") return "⚠ The reply was cut off mid-sentence rather than finished.";
   if (reason === "empty") return "⚠ The model returned no answer to this question.";
+  if (reason === "narrating") return "⚠ The model described the conversation instead of answering it — its reasoning was not separated from the answer.";
   return null;
 }
