@@ -50,6 +50,20 @@ Then mount it, and write the manifest and the document it answers from:
 API about one object: a snapshot per question, one editable field, one declared read tool. Both emit a
 manifest that already passes validation, plus a `STARTER.md` checklist naming what to edit.
 
+**Retrieval is on by default.** Declare the documents the assistant may answer from and every question is
+answered from the sections that match it, rather than one document cut at the byte cap:
+
+```json
+"context": { "documents": [{ "url": "handbook.md", "label": "handbook" }] },
+"retrieval": { "topK": 5, "maxBytes": 6144 }
+```
+
+The default embedder is bundled with the SDK, so there is nothing to install, no revision to pin and no
+weight file to host: BM25 answers the first question immediately and the embeddings join in milliseconds.
+`"retrieval": { "embedder": "none" }` opts out to keyword search with nothing fetched at all, and
+`"embedder": "embeddinggemma-2-text-q4f16"` asks for the larger pinned model instead. Both tiers are measured
+against your own corpus rather than argued about: [RETRIEVAL.md](docs/RETRIEVAL.md).
+
 ## Models
 
 Six pinned models, all installed on demand into browser storage, all verified by SHA-256 against an immutable

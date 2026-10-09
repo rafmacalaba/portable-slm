@@ -8,6 +8,13 @@ Everything here is a **read-only** integration. The assistant reads a snapshot y
 text; your application keeps validation, saving and publishing. There is no cloud inference, no API key,
 no telemetry, and no path from the model to a write API.
 
+## Retrieval is on by default
+
+The scaffold declares your documentation as a corpus, so questions are answered from the sections that match
+rather than from the whole document cut at the byte cap. The default embedder ships inside the SDK: nothing
+to install, and embeddings begin within milliseconds of the first question. `"embedder": "none"` in the
+manifest opts out to keyword search with nothing fetched.
+
 ## One turn, end to end
 
 ```mermaid

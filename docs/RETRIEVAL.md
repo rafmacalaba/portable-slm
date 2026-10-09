@@ -177,7 +177,10 @@ matters.
 
 ## What is built
 
-Retrieval is the default when a host declares a corpus. `context.documents` and `retrieval` are validated at
+Retrieval is the default when a host declares a corpus, and the default embedder is bundled, so a host that
+declares one gets ranked semantic answers with nothing to install. A scaffolded host starts that way: both
+`npm run scaffold` shapes declare their documentation as `context.documents` and a `retrieval` block that
+names no embedder, so they follow the SDK default rather than pinning a tier they did not choose. `context.documents` and `retrieval` are validated at
 mount, and `integrations/retrieval-context.js` provides the context: the corpus is fetched once, chunked,
 indexed, and every question is answered from the few sections that match it.
 
