@@ -144,7 +144,7 @@ test("a prebuilt index is used as-is, and a stale one is refused rather than ans
   });
   const prebuiltReady = await provider.ready();
   assert.equal(provider.source, "prebuilt");
-  assert.match(prebuiltReady.note, /prebuilt index, \d+ section/);
+  assert.match(prebuiltReady.note, /\d+ sections · prebuilt index/);
 
   // Same key, but the corpus has moved on: the artifact must not answer from stale text.
   const edited = `${DOC}\n\n## New section\nAdded after the index was built.`;
@@ -155,7 +155,7 @@ test("a prebuilt index is used as-is, and a stale one is refused rather than ans
   });
   const result = await stale.ready();
   assert.notEqual(stale.source, "prebuilt", "a stale artifact must not be used");
-  assert.match(result.note, /keyword search only so far/);
+  assert.match(result.note, /keyword search only/);
 });
 
 test("the cache key changes with the corpus version, so an edit rebuilds", async () => {

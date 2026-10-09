@@ -220,15 +220,15 @@ export function createRetrievalContext({ manifest, base, fetch: request = global
           state.index = upgraded.index;
           state.source = upgraded.source;
           onStatus(upgraded.source === "embedded"
-            ? `retrieval upgraded to ${upgraded.index.chunks.length} embedded sections`
-            : `retrieval is keyword-only: ${upgraded.reason}`, upgraded.source === "embedded" ? "info" : "warn");
+            ? `${upgraded.index.chunks.length} sections · embedded on this device`
+            : `keyword search only: ${upgraded.reason}`, upgraded.source === "embedded" ? "info" : "warn");
         });
       }
       // Always say what is answering. A caller that only hears about problems cannot tell a working
       // retrieval from an absent one, and the difference decides how much a reader trusts the answer.
       const count = built.index.chunks.length;
-      const label = { prebuilt: "prebuilt index", cache: "cached index", bm25: "keyword search only so far" }[built.source] ?? built.source;
-      const note = `${label}, ${count} section(s)`;
+      const label = { prebuilt: "prebuilt index", cache: "cached index", bm25: "keyword search only", embedded: "embedded on this device" }[built.source] ?? built.source;
+      const note = `${count} sections · ${label}`;
       // Announced rather than returned only: the caller owns where it is shown, and a status line is the
       // wrong place for it because the model state legitimately overwrites that line.
       onStatus(note, "info");

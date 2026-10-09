@@ -154,7 +154,17 @@ try {
     await page.waitForFunction(() => document.querySelector("[data-pslm] .state")?.textContent?.trim(), { timeout: 15000 });
 
     const disclosure = await page.evaluate(() => document.querySelector(".state").title);
-    check(`[${label}] the panel discloses retrieval as the source`, /retrieved from this application's own documents/.test(disclosure));
+    check(`[${label}] the panel discloses retrieval in its tooltip`, /retrieved from this application's own documents/.test(disclosure));
+    // A disclosure nobody can see is not an indication. Assert the visible line, and that it says what is
+    // answering: the section count and whether embeddings are in play.
+    const visible = await page.evaluate(() => {
+      const line = document.querySelector("[data-pslm] [data-source]");
+      if (!line || line.hidden) return null;
+      const style = getComputedStyle(line);
+      return { text: line.textContent.trim(), opacity: style.opacity, display: style.display };
+    });
+    check(`[${label}] and shows it as a visible line`, Boolean(visible) && visible.display !== "none" && visible.opacity !== "0",
+      visible ? visible.text : "no visible [data-source] element");
 
     // One provider per page, held open, so the background upgrade to embeddings is observed rather than
     // restarted. No embedder is injected: this is the default tier doing the work.

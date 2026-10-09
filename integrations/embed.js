@@ -127,6 +127,10 @@ const TEMPLATE = `
   :where(.pslm) .state.ok{color:#1a7f37}:where(.pslm) .state.warn{color:#9a6700}:where(.pslm) .state.err{color:#cf222e}
   :where(.pslm) .build{color:#8b949e}
   :where(.pslm) .notice{color:#9a6700;flex:1 1 100%}
+  /* What the answers are drawn from is not a status: the model state overwrites the status line, and a
+     tooltip is not an indication. This is persistent and visible. */
+  :where(.pslm) .source{color:#57606a;flex:1 1 100%}
+  :where(.pslm) .source b{color:#1c2b36}
 </style>
 <h3><span></span><button type="button" data-close title="Close">✕</button></h3>
 <div class="bar">
@@ -135,6 +139,7 @@ const TEMPLATE = `
   <span data-model-label hidden></span>
   <span class="build" data-build hidden></span>
   <span class="notice" data-notice hidden>no record on this page — answers are not grounded in your data</span>
+  <span class="source" data-source hidden></span>
   <button type="button" data-install hidden>Install model</button>
   <button type="button" data-load hidden>Load model</button>
   <button type="button" data-unload hidden>Unload from memory</button>
@@ -395,6 +400,13 @@ function mount(root, { manifest, ai, version, base = window.location.origin, ass
         // document is the source. Naming both would be describing the old behaviour as if it were current.
         sourceNotice = `source: retrieved from this application's own documents (${message})`;
         $(".state").title = `${$(".state").textContent} — ${sourceNotice}`;
+        // Visible, not just a tooltip: a reader has no other way to tell that a corpus is answering, and
+        // "there is no indication" is a fair complaint about a disclosure nobody can see.
+        const line = $("[data-source]");
+        if (line) {
+          line.hidden = false;
+          line.innerHTML = `<b>retrieval</b> · ${message}`;
+        }
       }
     },
   });
