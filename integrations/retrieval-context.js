@@ -57,7 +57,7 @@ export async function fetchCorpus(manifest, base, { fetch: request = globalThis.
     const text = await res.text();
     const bytes = enc.encode(text).length;
     if (bytes > maxBytes) throw new Error(`corpus ${label} is ${Math.round(bytes / 1024)} KB; the limit is ${Math.round(maxBytes / 1024)} KB`);
-    corpus.push({ path: label, text });
+    corpus.push({ path: label, url: target.href, text });
   }
   return corpus;
 }
@@ -105,8 +105,8 @@ export async function buildCorpusIndex({ manifest, base, fetch: request = global
   const corpus = await fetchCorpus(manifest, base, { fetch: request });
   // The application document is already always in the prompt, so indexing it would supply it twice and let
   // its own sections outrank the description it exists to provide.
-  const appUrl = manifest.context?.app?.url;
-  const indexed = appUrl ? corpus.filter((doc) => doc.path !== appUrl) : corpus;
+  const appUrl = manifest.context?.app?.url ? new URL(manifest.context.app.url, base).href : null;
+  const indexed = appUrl ? corpus.filter((doc) => doc.url !== appUrl) : corpus;
   const chunks = corpusChunks(indexed, { targetChars: chunkChars });
   if (!chunks.length) return { index: null, upgrade: null, options, dims, chunkChars, minSimilarity, chunkerVersion: CHUNKER_VERSION };
 
