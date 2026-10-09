@@ -13,6 +13,16 @@ function onnxFiles(repo, revision, files) {
 const ONNX_350_REV = "d11593fd9eb408e322667926656598896c2d5ff9";
 const ONNX_12B_REV = "10f72e70abf67ac0fd7ebf15bc5854726891d864";
 const ONNX_26B_REV = "66826372fd4fa166f53be0371c9315745c07cace";
+const EMBEDDINGGEMMA2_REV = "daa72c51243991dfcaf9f9137d2c573d8f7790c0";
+
+/**
+ * Instruction prefixes. A wrong or missing prefix does not error, it quietly returns worse vectors,
+ * so they live here as data with a test rather than as strings scattered through call sites.
+ */
+export const EMBEDDING_PREFIXES = {
+  query: (text) => `task: search result | query: ${text}`,
+  document: (title, text) => `title: ${title || "none"} | text: ${text}`,
+};
 
 export const MODELS = {
   "lfm2.5-230m-q4km": {
@@ -85,6 +95,31 @@ export const MODELS = {
   },
 };
 
+// Embedding models are a different kind of entry: `kind` lets a caller tell a generator from an
+// encoder without guessing from the id, and `dims`/`mrl` are what retrieval needs to size an index.
+// Only the text encoder is listed. EmbeddingGemma 2 also ships a vision encoder and an audio encoder,
+// and they are deliberately absent: an undeclared file cannot be downloaded, because the pinned fetch
+// layer throws on anything the catalogue does not name.
+MODELS["embeddinggemma-2-text-q4f16"] = {
+  label: "EmbeddingGemma 2 text (Q4F16 · ~181 MB)",
+  kind: "embedding",
+  runtime: "transformers", format: "ONNX",
+  repo: "onnx-community/embeddinggemma-2-ONNX", revision: EMBEDDINGGEMMA2_REV,
+  dtype: "q4f16", subfolder: "onnx",
+  dims: 768, mrl: [768, 512, 256, 128], ctx: 8192, pooling: "mean",
+  license: "Apache-2.0",
+  verified: "Pinned from the Hub tree API; the 495 KB graph hash was recomputed locally and matched",
+  files: onnxFiles("onnx-community/embeddinggemma-2-ONNX", EMBEDDINGGEMMA2_REV, [
+    ["config.json", 5031, "8d011bfe08b5e345bbe0b81e5c6fd02c381920b345b986047bc2a33ce7b90d1d"],
+    ["tokenizer.json", 32170510, "4d777ef5bdc1aa36227abdfb77c3e49e7b9c892d16e1b6bda41c393504828be4"],
+    ["tokenizer_config.json", 1599, "17bd5d6e9364ca49a534e1502076593317c298d4a663623091ed45388f004874"],
+    // Not read for text, but the pipeline probes for it, and an undeclared probe is a hard failure.
+    ["preprocessor_config.json", 560, "9344893f8d0573a46ebb2ca54c03f56d044cea194c8dcfb1f4d652240ac21daa"],
+    ["onnx/model_q4f16.onnx", 495298, "53feeced79582d661e30adeaa9829cea90d92b1c78347e26fd123773580f71d0"],
+    ["onnx/model_q4f16.onnx_data", 156862464, "c39fbaa1fb4221f04beb82786a06b81999c514fd39e84fcd58ef79413c87fa56"],
+  ]),
+};
+
 export const DEFAULTS = {
   // Native LFM2.5 context. KV cache is ~12 KB/token and grows with actual usage, so a higher
   // limit costs nothing until a long prompt uses it. Per-model overrides live on MODELS entries
@@ -94,4 +129,10 @@ export const DEFAULTS = {
   // Liquid's recommended sampling for LFM2.5.
   sampling: { temperature: 0.1, top_k: 50, penalty_repeat: 1.05 },
   license: "LFM Open License v1.0 — https://huggingface.co/LiquidAI/LFM2.5-350M/blob/main/LICENSE",
+  // Retrieval defaults. `alpha` is the embedding weight, so 0 is BM25 alone and 1 is embeddings
+  // alone; the mix is the default because each scorer is weak exactly where the other is strong.
+  // dims 256 is a Matryoshka truncation of the embedder's 768, which quarters the index for a
+  // quality difference that is not measurable on short chunks.
+  retrieval: { alpha: 0.5, dims: 256, topK: 6, maxBytes: 8192 },
+  embedder: "embeddinggemma-2-text-q4f16",
 };

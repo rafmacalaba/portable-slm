@@ -225,6 +225,7 @@ and asks before removing anything.
 |---|---|
 | [GETTING_STARTED.md](docs/GETTING_STARTED.md) | integrating into an application, from zero, with diagrams |
 | [CONTEXT_PROVIDERS.md](docs/CONTEXT_PROVIDERS.md) | deciding where answers come from: the five-rung ladder, and where to stop |
+| [RETRIEVAL.md](docs/RETRIEVAL.md) | indexing a corpus: hybrid BM25 and embeddings, the index format, and how to build one |
 | [ADDONS.md](docs/ADDONS.md) | extending the harness: the six extension points and what each owes |
 | [ARCHITECTURE.md](docs/ARCHITECTURE.md) | how the layers fit, and why the boundaries are where they are |
 | [HARNESS.md](docs/HARNESS.md) | what is enforced in code rather than asked for in a prompt |
@@ -235,16 +236,17 @@ and asks before removing anything.
 
 | document | what it records |
 |---|---|
-| [STATUS.md](docs/STATUS.md) | status, release gates, the gated retrieval follow-up |
+| [STATUS.md](docs/STATUS.md) | what is verified, what is not, and what is deliberately unbuilt |
 | [DEVICE_VALIDATION.md](docs/DEVICE_VALIDATION.md) | what has been run on which device, and what has not |
 | [examples/README.md](examples/README.md) | the two worked host integrations, end to end |
 | [AGENTS.md](AGENTS.md) | working **in this repository**: invariants, module map, how to verify a change |
 
 ## License
 
-The source is MIT; see [`LICENSE`](LICENSE). wllama is MIT. The runtime dependencies are two, both pinned:
-`@huggingface/transformers` and `@wllama/wllama`. Model weights are **not** bundled and carry their own terms:
-Liquid AI's models use the LFM Open License v1.0, so review it before redistributing weights.
+The source is MIT; see [`LICENSE`](LICENSE). wllama is MIT. The runtime dependencies are three, all pinned:
+`@huggingface/transformers`, `@wllama/wllama` and `@wllama/wllama-compat`. Model weights are **not** bundled and carry their own terms:
+Liquid AI's models use the LFM Open License v1.0, and EmbeddingGemma 2 is Apache-2.0, so review the
+terms before redistributing weights.
 
 The npm package is not published yet. Until it is, a host vendors the built bundle, and
 [GETTING_STARTED.md](docs/GETTING_STARTED.md) is the path.

@@ -13,6 +13,7 @@ observation named; everything else is either unverified or deliberately unbuilt.
 | **The tool loop** | argument validation against the declared schema, the same-origin guard, the record-id spoof guard, byte caps, timeouts, and approval per call: unit-tested, and `host-check.html` calls every declared tool on a live origin |
 | **The host contract** | `validateManifest()` and `mountMode()` tested as pure functions; a manifest with a typo or a missing context source fails the mount rather than the conversation |
 | **Answer quality signals** | grounding (answer tokens absent from the supplied context) and completeness (empty, plan-shaped, truncated, narrating) are decided in code and shown per answer; both have tests built from real observed failures |
+| **Retrieval, the ranker half** | `src/retrieval.js`: a heading-aware chunker, BM25, a hybrid rank over the same chunks, a byte cap that reports what it dropped, and an index format with a cache key that changes with the corpus, embedder, dimensions or chunker. 16 tests |
 | **The app** | chat and model manager at `/`, evidence-checked Q&A at `/catalogue-qa.html`, field suggestion at `/field-suggest.html`, twelve authored benchmark cases at `/benchmark.html`, and the acceptance page at `/host-check.html` |
 | **Desktop Chrome extension** | MV3 side panel in `integrations/chrome-extension/`: imports a local GGUF, calls an offline tool, restarts offline and calls it again |
 | **Devices** | a laptop and an iPhone, on the smaller tiers. `DEVICE_VALIDATION.md` records the matrix |
@@ -30,8 +31,10 @@ observation named; everything else is either unverified or deliberately unbuilt.
 
 ## Deliberately not built
 
-- **A ranker, embeddings, or any retrieval inside the SDK.** Ranking needs the corpus, and the corpus is the
-  host's. Rung 4 of the [context ladder](CONTEXT_PROVIDERS.md) is the seam for it and needs no SDK change.
+- **The embedder's runtime path, the manifest keys, and a default `onContext` that uses them.** The ranker,
+  the index format and the pinned embedder entry exist and are tested; the feature-extraction loader and the
+  wiring do not. Until they do, a host can call `retrieval.js` directly at rung 4, and
+  [RETRIEVAL.md](RETRIEVAL.md) says so rather than implying it works.
 - **Any write path.** There is none, structurally: a draft reaches a form only when a person clicks.
 - **A published npm package.** A host vendors the built bundle; [`GETTING_STARTED.md`](GETTING_STARTED.md) is
   the path.

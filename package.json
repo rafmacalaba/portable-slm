@@ -16,6 +16,9 @@
       "types": "./integrations/snapshot-context.d.ts",
       "default": "./integrations/snapshot-context.js"
     },
+    "./retrieval": {
+      "default": "./src/retrieval.js"
+    },
     "./field-suggest": {
       "types": "./integrations/field-suggest.d.ts",
       "default": "./integrations/field-suggest.js"
