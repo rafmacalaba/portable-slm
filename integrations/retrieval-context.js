@@ -178,9 +178,14 @@ export async function buildCorpusIndex({ manifest, base, fetch: request = global
  * The provider handed to <pslm-chat>. It uses whatever index is current, so a session that starts on
  * BM25 upgrades mid-conversation without the reader doing anything.
  */
-export function createRetrievalContext({ manifest, base, fetch: request = globalThis.fetch, storage, embedder, modelId = DEFAULTS.embedder, onStatus = () => {} } = {}) {
+export function createRetrievalContext({ manifest, base, fetch: request = globalThis.fetch, storage, embedder, modelId, onStatus = () => {} } = {}) {
   const declared = documents(manifest);
   if (!declared.length) return null;
+  const requested = retrievalOptions(manifest).embedder ?? "auto";
+  // "none" is a real choice, not a degraded state: a host whose audience should spend nothing gets BM25
+  // over the same corpus, and the embedder is never loaded, so its runtime is never even fetched.
+  const tier = requested === "none" ? null : (modelId ?? (requested === "auto" ? DEFAULTS.embedder : requested));
+  if (!tier) embedder = null;
   const state = { index: null, dims: DEFAULTS.retrieval.dims, options: {}, source: "starting", minSimilarity: 0 };
   let pending = null;
 
@@ -194,13 +199,16 @@ export function createRetrievalContext({ manifest, base, fetch: request = global
    */
   async function queryEmbedder() {
     if (!embedder?.status || !state.index?.vectors) return null;
-    if (!embedder.loaded) await embedder.load(modelId);
+    // Weight zero means the semantic half is not used at all, so embedding the question would spend a
+    // download and milliseconds to multiply by nothing.
+    if ((state.options.alpha ?? DEFAULTS.retrieval.alpha) === 0) return null;
+    if (!embedder.loaded) await embedder.load(tier);
     return embedder;
   }
 
   async function prepare() {
     try {
-      const built = await buildCorpusIndex({ manifest, base, fetch: request, storage, embedder, modelId, onStatus });
+      const built = await buildCorpusIndex({ manifest, base, fetch: request, storage, embedder, modelId: tier ?? "bm25", onStatus });
       if (!built.index) return { note: `the declared corpus produced no sections` };
       Object.assign(state, {
         index: built.index, dims: built.dims, options: built.options, source: built.source,
@@ -237,6 +245,8 @@ export function createRetrievalContext({ manifest, base, fetch: request = global
     /** Resolves when the first question can be answered; embedding continues after it. */
     ready() { return (pending ??= prepare()); },
     get source() { return state.source; },
+    /** Which tier is in use, for a caller that wants to say so before the first question. */
+    get tier() { return tier; },
     async onContext(question) {
       if (!state.index) await this.ready();
       if (!state.index) return "";

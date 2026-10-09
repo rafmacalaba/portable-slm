@@ -1,5 +1,6 @@
-// pslm-host/1 manifest and context rules, kept free of runtime imports so hosts and tests
+// pslm-host/1 manifest and context rules, kept free of browser runtime imports so hosts and tests
 // can validate a manifest without loading the inference engine.
+import { MODELS } from "../src/models.js";
 export const HOST_API_VERSION = "pslm-host/1";
 
 // The task ids this SDK implements. Hosts only allowlist these; adding a task is a portable-slm
@@ -81,7 +82,7 @@ export function documents(manifest) {
 
 // `minSimilarity` is per corpus on purpose: the floor that suits one corpus is wrong for another, and a
 // host that has measured its own questions knows better than the catalogue's default.
-const RETRIEVAL_KEYS = new Set(["index", "corpusVersion", "dims", "alpha", "topK", "maxBytes", "minSimilarity"]);
+const RETRIEVAL_KEYS = new Set(["index", "corpusVersion", "dims", "alpha", "topK", "maxBytes", "minSimilarity", "embedder"]);
 
 /**
  * Retrieval settings, with every out-of-range value refused rather than clamped. A host that asks for
@@ -104,6 +105,15 @@ export function retrievalOptions(manifest) {
   if (declared.dims !== undefined) {
     if (!Number.isInteger(declared.dims) || declared.dims < 1) throw new Error("retrieval.dims must be a positive integer");
     out.dims = declared.dims;
+  }
+  // Which tier, or none at all. A manifest that cannot name the embedder forces every host onto one
+  // trade-off, and the trade-off differs by corpus and audience.
+  if (declared.embedder !== undefined) {
+    const allowed = ["auto", "none", ...Object.entries(MODELS).filter(([, spec]) => spec.kind === "embedding").map(([id]) => id)];
+    if (typeof declared.embedder !== "string" || !allowed.includes(declared.embedder)) {
+      throw new Error(`retrieval.embedder must be one of ${allowed.join(", ")}, got ${JSON.stringify(declared.embedder)}`);
+    }
+    out.embedder = declared.embedder;
   }
   if (declared.minSimilarity !== undefined) {
     if (typeof declared.minSimilarity !== "number" || !(declared.minSimilarity >= -1 && declared.minSimilarity <= 1)) {

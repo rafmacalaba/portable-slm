@@ -57,6 +57,11 @@ does not match the current corpus. The browser path checks the prebuilt file fir
   Lower is smaller and faster to compare; 256 is the default and quarters the index size. It is part of
   the cache key, so changing it rebuilds rather than mixing vector spaces.
 - **`retrieval.alpha`** is the embedding weight. `0` is BM25 alone, `1` is embeddings alone.
+- **`retrieval.embedder`** picks the tier, or refuses one: `"auto"` (the default tier), a catalogue id such as
+  `"embeddinggemma-2-text-q4f16"`, or `"none"` for keyword search over the same corpus with **no embedder
+  runtime fetched at all**. `"none"` is a real choice rather than a degraded state, and `alpha: 0` reaches the
+  same saving by a different route: either way the question is never embedded, because computing a vector to
+  multiply by zero is a download spent on nothing.
 - Everything here is optional. No `documents` means no retrieval, and a bare mount stays cheap.
 
 ## The embedder: two tiers, and the corpus decides

@@ -52,7 +52,7 @@ Every release passes range, consistency and missing-value checks before publicat
 A new version is published when values change; the previous version stays available.
 `;
 
-const manifest = (withIndex) => ({
+const manifest = (withIndex, embedder) => ({
   apiVersion: "pslm-host/1",
   app: { name: "Fixture App", version: "1.0.0" },
   context: {
@@ -60,7 +60,11 @@ const manifest = (withIndex) => ({
     documents: [{ url: "handbook.md", label: "Handbook" }],
     credentials: "none",
   },
-  retrieval: { corpusVersion: CORPUS_VERSION, dims: DIMS, alpha: 0.5, topK: 3, maxBytes: 4096, ...(withIndex ? { index: "/pslm.index.json" } : {}) },
+  retrieval: {
+    corpusVersion: CORPUS_VERSION, dims: DIMS, alpha: 0.5, topK: 3, maxBytes: 4096,
+    ...(withIndex ? { index: "/pslm.index.json" } : {}),
+    ...(embedder ? { embedder } : {}),
+  },
   tasks: ["pslm.chat"],
   writeBack: false,
 });
@@ -110,8 +114,10 @@ for (const name of readdirSync("dist").filter((f) => f.endsWith(".js"))) {
 writeFileSync(join(FIXTURE, "handbook.md"), CORPUS);
 writeFileSync(join(FIXTURE, "portable-slm.host.json"), JSON.stringify(manifest(true), null, 2));
 writeFileSync(join(FIXTURE, "bm25.host.json"), JSON.stringify(manifest(false), null, 2));
+writeFileSync(join(FIXTURE, "keyword.host.json"), JSON.stringify(manifest(false, "none"), null, 2));
 writeFileSync(join(FIXTURE, "host.html"), page_("portable-slm.host.json"));
 writeFileSync(join(FIXTURE, "host-bm25.html"), page_("bm25.host.json"));
+writeFileSync(join(FIXTURE, "host-keyword.html"), page_("keyword.host.json"));
 
 const prebuilt = await prebuiltIndex();
 writeFileSync(join(FIXTURE, "pslm.index.json"), prebuilt);
@@ -132,10 +138,16 @@ await new Promise((r) => setTimeout(r, 900));
 const browser = await puppeteer.launch({ executablePath: CHROME, headless: "new", args: ["--no-sandbox", "--disable-dev-shm-usage"] });
 
 try {
-  for (const [file, label, expectSource] of [["host.html", "prebuilt artifact", "prebuilt"], ["host-bm25.html", "no artifact", "bm25"]]) {
+  for (const [file, label, expectSource, keywordOnly] of [
+    ["host.html", "prebuilt artifact", "prebuilt", false],
+    ["host-bm25.html", "no artifact", "embedded", false],
+    ["host-keyword.html", "keyword only", "bm25", true],
+  ]) {
     const page = await browser.newPage();
     await page.setCacheEnabled(false); // dist ships without Cache-Control; a stale bundle would invalidate this
     const errors = [];
+    const fetched = [];
+    page.on("request", (r) => fetched.push(r.url()));
     page.on("pageerror", (e) => errors.push(e.message));
     page.on("console", (m) => { if (m.type() === "error" && !/status of 404/.test(m.text())) errors.push(m.text()); });
     await page.goto(`http://127.0.0.1:${PORT}/${file}`, { waitUntil: "networkidle2" });
@@ -148,12 +160,15 @@ try {
     // restarted. No embedder is injected: this is the default tier doing the work.
     const ask = (question) => page.evaluate(async (q) => {
       const mod = await import("./embed.js");
-      const name = location.pathname.includes("bm25") ? "bm25.host.json" : "portable-slm.host.json";
-      const declared = await (await fetch(`./${name}`)).json();
-      // The embedder has to be handed over: without one the provider is BM25-only by design, and the
-      // disclosure says so. The panel passes its own; a bare caller has to pass this one.
+      // The manifest the page actually declared, not a guess from the file name: guessing is how a page
+      // ends up tested against a different manifest than the one it mounts.
+      const declared = await (await fetch(document.querySelector("[data-pslm]").dataset.manifest)).json();
+      // The embedder has to be handed over: without one the provider is BM25-only by design. The panel
+      // applies the same rule, so a manifest that chose keyword-only never fetches the runtime.
+      const wantsEmbedder = (declared.retrieval?.embedder ?? "auto") !== "none";
       globalThis.__pslmProvider ??= mod.createRetrievalContext({
-        manifest: declared, base: location.href, embedder: mod.createEmbedder({}),
+        manifest: declared, base: location.href,
+        embedder: wantsEmbedder ? mod.createEmbedder({}) : null,
       });
       const provider = globalThis.__pslmProvider;
       const ready = await provider.ready();
@@ -169,20 +184,26 @@ try {
     check(`[${label}] an identifier is retrieved and labelled`, /^### Identifiers\n[\s\S]*house_hold_id/.test(first.context));
     check(`[${label}] the context is a selection, not the document`, (first.context.match(/^### /gm) || []).length < 8);
 
-    // The real thing: a question sharing no words with the corpus, answered by the bundled embedder, in a
-    // browser, with nothing downloaded and no stand-in.
     const semantic = await ask("how long before I can read it");
-    check(`[${label}] a paraphrase reaches the section that shares no words`, /twelve months after deposit/.test(semantic.context), `source=${semantic.source}`);
-    check(`[${label}] and does not drag in unrelated sections`, !/house_hold_id|Write to the data team/.test(semantic.context));
+    check(`[${label}] it reports the tier it is using`, semantic.source === expectSource, `source=${semantic.source}`);
+
+    if (keywordOnly) {
+      // The point of the switch: the semantic runtime must never even be requested, or "keyword only" is a
+      // label rather than a saving.
+      const runtime = fetched.filter((url) => /index\.browser-.*\.js$/.test(url));
+      check(`[${label}] the embedder runtime is never fetched`, runtime.length === 0, `${runtime.length} request(s): ${runtime[0] ?? "none"}`);
+      check(`[${label}] and it says so`, /keyword search only/.test(semantic.note || ""), semantic.note);
+    } else {
+      // The real thing: a question sharing no words with the corpus, answered by the bundled embedder, in a
+      // browser, with nothing faked and nothing large downloaded.
+      check(`[${label}] a paraphrase reaches the section that shares no words`, /twelve months after deposit/.test(semantic.context));
+      check(`[${label}] and does not drag in unrelated sections`, !/house_hold_id|Write to the data team/.test(semantic.context));
+      const runtime = fetched.filter((url) => /index\.browser-.*\.js$/.test(url));
+      check(`[${label}] the embedder runtime is fetched once`, runtime.length <= 1, `${runtime.length} request(s)`);
+    }
 
     const off = await ask("how do I bake sourdough bread");
     check(`[${label}] a question the corpus does not cover yields nothing`, off.context.length === 0, `bytes=${off.context.length}`);
-
-    if (expectSource === "prebuilt") {
-      check(`[${label}] the artifact is used as shipped`, semantic.source === "prebuilt", `source=${semantic.source}`);
-    } else {
-      check(`[${label}] with no artifact the browser indexes the corpus itself`, semantic.source === "embedded", `source=${semantic.source}`);
-    }
 
     check(`[${label}] no page errors`, errors.length === 0, errors.slice(0, 1).join(""));
     await page.close();

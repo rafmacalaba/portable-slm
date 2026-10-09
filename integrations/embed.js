@@ -379,10 +379,13 @@ function mount(root, { manifest, ai, version, base = window.location.origin, ass
   // providers above, because the whole point is that the byte cap stops deciding what the model sees.
   // BM25 answers from the first question with nothing downloaded; embeddings join when they are
   // installed. A failure here degrades to the provider that was already set, never to no context.
+  const wantsEmbedder = (manifest?.retrieval?.embedder ?? "auto") !== "none";
   const retrieval = createRetrievalContext({
     manifest, base,
     storage: typeof caches === "undefined" ? null : indexCache(),
-    embedder: createEmbedder({ assets }),
+    // Constructing the embedder is what pulls its runtime into the page, so a host that chose keyword-only
+    // never fetches it. That is the difference between a manifest field and a real download.
+    embedder: wantsEmbedder ? createEmbedder({ assets }) : null,
     // A warning is worth the status line. Progress is not: it would be overwritten by the next model
     // state and the reader would lose the one durable fact, which is what the answers are drawn from.
     onStatus: (message, level) => {

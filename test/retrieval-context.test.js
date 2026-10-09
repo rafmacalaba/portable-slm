@@ -170,3 +170,48 @@ test("the cache key changes with the corpus version, so an edit rebuilds", async
   assert.equal(built.source, "bm25");
   assert.ok(built.index.chunks.length >= 3);
 });
+
+test('embedder: "none" is a real choice, and the embedder is never used', async () => {
+  let touched = 0;
+  const embedder = {
+    status: async () => { touched++; return { state: "installed" }; },
+    load: async () => { touched++; return {}; },
+    get loaded() { return { dims: 384, device: "wasm" }; },
+    embed: async () => { touched++; return [new Float32Array(384)]; },
+  };
+  const quiet = manifest({ retrieval: { embedder: "none" } });
+  const provider = createRetrievalContext({
+    manifest: quiet, base: BASE, fetch: textFetch({ "/handbook.md": DOC }), storage: memStorage(), embedder,
+  });
+  const { note } = await provider.ready();
+  assert.equal(provider.tier, null, "the provider reports that no tier is in use");
+  assert.match(note, /keyword search only/);
+  const out = await provider.onContext("house_hold_id");
+  assert.match(out, /house_hold_id/, "keyword retrieval still works over the same corpus");
+  assert.equal(touched, 0, "nothing should have asked the embedder for anything, not even its status");
+});
+
+test("alpha 0 skips the query embedding rather than computing something multiplied by nothing", async () => {
+  let embedded = 0;
+  const ready = { dims: 384 };
+  const embedder = {
+    status: async () => ({ state: "installed" }),
+    load: async () => ready,
+    get loaded() { return ready; },
+    embed: async (texts) => { embedded++; return (Array.isArray(texts) ? texts : [texts]).map(() => new Float32Array(384).fill(0.1)); },
+  };
+  const chunks = corpusChunks(await fetchCorpus(manifest(), BASE, { fetch: textFetch({ "/handbook.md": DOC }) }));
+  const built = buildIndex({ chunks, vectors: new Float32Array(chunks.length * 384), dims: 384, embedderId: "ternlight-base", corpusVersion: "0", chunkChars: 480 });
+  const storage = { get: async () => serializeIndex(built), put: async () => {} };
+  const provider = createRetrievalContext({
+    manifest: manifest({ retrieval: { alpha: 0, corpusVersion: "0" } }),
+    base: BASE, fetch: textFetch({ "/handbook.md": DOC }), storage, embedder,
+  });
+  await provider.ready();
+  // The fake vectors are wrong for the query on purpose: with alpha 0 the result must not depend on them.
+  const out = await provider.onContext("house_hold_id");
+  assert.match(out, /house_hold_id/);
+  const before = embedded;
+  await provider.onContext("embargo release");
+  assert.equal(embedded, before, "a question must not be embedded when the embedding weight is zero");
+});
