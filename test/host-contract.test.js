@@ -7,7 +7,7 @@ import {
 
 const manifest = () => ({
   apiVersion: HOST_API_VERSION,
-  app: { name: "Metadata Editor", version: "1.2.1" },
+  app: { name: "Example App", version: "1.2.1" },
   context: {
     record: { url: "/index.php/api/editor/json/{id}?exclude_private_fields=1", maxBytes: 12288 },
     field: {
@@ -23,7 +23,7 @@ const manifest = () => ({
 test("accepts a pslm-host/1 manifest and defaults credentials to same-origin", () => {
   const withoutCredentials = manifest();
   delete withoutCredentials.context.credentials;
-  assert.equal(validateManifest(manifest()).app.name, "Metadata Editor");
+  assert.equal(validateManifest(manifest()).app.name, "Example App");
   assert.equal(validateManifest(withoutCredentials).context.record.maxBytes, 12288);
 });
 

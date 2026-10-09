@@ -158,10 +158,10 @@ for (const button of document.querySelectorAll("button[data-view]")) {
     document.querySelector("main").hidden = true;
     $("embedded-view").hidden = false;
     try {
-      activeView = button.dataset.view === "nada"
-        ? (await import("./nada-view.js")).mountNada(root, slm, { embedded: true })
-        : button.dataset.view === "review"
-          ? (await import("./review-view.js")).mountReview(root, slm, { embedded: true })
+      activeView = button.dataset.view === "catalogue-qa"
+        ? (await import("./catalogue-qa-view.js")).mountCatalogueQa(root, slm, { embedded: true })
+        : button.dataset.view === "field-suggest"
+          ? (await import("./field-suggest-view.js")).mountFieldSuggest(root, slm, { embedded: true })
           : (await import("./benchmark-view.js")).mountBenchmark(root, slm, { embedded: true });
       $("back-to-chat").focus();
     } catch (err) {
@@ -182,7 +182,7 @@ $("back-to-chat").addEventListener("click", async () => {
   $("model-manager").hidden = false;
   document.querySelector("main").hidden = false;
   await refresh();
-  document.querySelector(embedded ? 'button[data-view="nada"]' : 'a[data-consumer="nada"]').focus();
+  document.querySelector(embedded ? 'button[data-view="catalogue-qa"]' : 'a[data-consumer="catalogue-qa"]').focus();
 });
 
 ui.model.addEventListener("change", () => { $("mirror").value = ""; refresh(); showOfflineReadiness(); showStorage().catch(() => {}); });

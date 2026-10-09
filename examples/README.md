@@ -1,65 +1,115 @@
-# Worked examples: NADA / Metadata Editor consumers
+# Worked integrations
 
-These adapters show two host integrations; Portable SLM is not built exclusively for NADA or
-Metadata Editor. The core SDK is host-agnostic, and other browser apps can provide their own bounded
-context and task UI.
+Two host applications shaped this SDK, and this directory is where everything about them lives. The core
+documentation names no application: the contract is host-agnostic, and a host-specific detail belongs here
+or in the runnable code beside this file.
 
-**Primary NADA laptop workflow is study Q&A at `/nada.html`.** This page is an older generic
-metadata-suggestion example, not a requirement of either upstream app.
+Both hosts are open-source web applications with their own databases, sessions and access rules:
 
-`integrations/metadata-context.js` fetches authorized metadata from the **current application's
-origin**, never from the AI host. It supports:
+| host | what it is | shape it uses |
+|---|---|---|
+| **Metadata Editor** | a PHP record editor: projects, form templates, a curator ACL, a FastAPI worker for file processing | rung 2 + 3 — a record snapshot and one declared field, plus two suggestion tasks |
+| **NADA** | a data catalogue: studies, collections, access policy, a public catalog API | rung 1 — application help text — plus one evidence-checked Q&A task |
 
-- NADA `GET /index.php/api/catalog/{IDNo}` → bounded ID, title, abstract.
-- Metadata Editor `GET /index.php/api/editor/json_field/{id}?path=<JSON Pointer>` → one field
-  (with `exclude_private_fields=1`).
+Neither is a requirement of the SDK, and neither is special-cased in `src/`: everything they need is a
+manifest, a task id, and their own endpoints.
 
-It uses the application's existing same-origin credentials and refuses cross-origin API bases.
-These endpoints are documented in the two upstream repositories. The request only happens when
-a user clicks **Read from this app's API**; users can inspect/edit the snapshot first.
+## What a host of each shape has to supply
 
-`examples/metadata-review.js` builds the prompt and validates a small JSON suggestion. This
-**suggestion + reason** format is a demo design decision, not a NADA or Editor API field. The
-`TEST-2030` data on `/review.html` is a fictional hardcoded input, not a hardcoded model answer.
-The model generates the reply on each run (temperature 0 makes repetition likely). The standalone
-`/review.html` page uses the same locally installed model as chat. On the public
-Hugging Face Space, there is **no private NADA/Editor API** at that origin. The separate
-**Load public NADA demo study** button fetches one published Popstan record without credentials;
-use pasted-snapshot mode for any private Editor project.
-To exercise the API button, host that page/JS under your authenticated NADA or Editor origin, or
-mount the reusable widget (`integrations/metadata-widget.js`) inside the existing frontend. The
-widget renders a bounded preview, suggestion and reason; it never calls a write API.
+| | Metadata Editor | NADA |
+|---|---|---|
+| what it may read | `GET /index.php/api/editor/json/{id}?exclude_private_fields=1` — the export document, 24 KB cap, never observation rows | `GET /index.php/api/catalog/{id}` — one published study |
+| narrowed read | `GET /index.php/api/editor/json_field/{id}?path={pointer}` — one field, 4 KB cap | the same route, trimmed to `{idno, title, abstract}` |
+| session | the curator's own, via same-origin cookies | public demo sends no credentials at all |
+| tasks | `pslm.chat`, `pslm.suggest-field`, `pslm.suggest-datafile-description` | `pslm.chat` |
+| the write path | none: a draft reaches a form only through a human click, via `pslm-fill-request` | none: answers are read-only, with an evidence check |
 
-```js
-import { mountMetadataWidget } from "./integrations/metadata-widget.js";
-// ai = one createLocalSLM instance shared by the consuming app. Host bundles wllama
-// JS/WASM locally and installs/imports the same pinned GGUF on its own origin.
-mountMetadataWidget(document.getElementById("ai-metadata-review"), ai, {
-  source: "metadata-editor", recordId: projectId, path: "/identification/title",
-});
+The Metadata Editor manifest, as it actually ships:
 
-// Lower-level pieces for a custom Vue/React component:
-import { loadMetadataContext } from "./integrations/metadata-context.js";
-import { reviewMessages, parseReview } from "./examples/metadata-review.js";
-
-// Inside the authenticated Metadata Editor frontend; ai is an installed/loaded
-// createLocalSLM instance, with JS/WASM served from this same origin.
-const snapshot = await loadMetadataContext({
-  source: "metadata-editor", id: projectId, path: "/identification/title",
-});
-showSnapshotForReview(snapshot); // explicit user consent before inference
-const reply = await ai.generate(reviewMessages("metadata-editor", snapshot), {
-  maxTokens: 192, temperature: 0, response_format: { type: "json_object" },
-});
-const suggestion = parseReview(reply.text);
-showSuggestionAndDiff(suggestion); // human approves; NO automatic writeback
+```json
+{
+  "apiVersion": "pslm-host/1",
+  "model": "lfm2.5-2.6b-onnx-q4f16",
+  "context": {
+    "app":    { "url": "/pslm-help.md", "maxBytes": 8192 },
+    "record": { "url": "/index.php/api/editor/json/{id}?exclude_private_fields=1", "maxBytes": 24576 },
+    "field":  { "url": "/index.php/api/editor/json_field/{id}?path={pointer}&exclude_private_fields=1",
+                "maxBytes": 4096,
+                "pointers": [ { "pointer": "/study_desc/study_info/abstract", "label": "Abstract" } ] },
+    "credentials": "same-origin"
+  },
+  "models": { "mirror": "/pslm-models/", "available": ["lfm2.5-350m-onnx-q4f16"] },
+  "tasks": ["pslm.chat", "pslm.suggest-field"],
+  "writeBack": false
+}
 ```
 
-For NADA use `source: "nada"` and its IDNo. If offline, paste an exported JSON snapshot instead;
-these PHP/database-backed applications themselves do not work offline without their own caching.
-Suggestions never save, publish or modify a record. `parseReview` checks shape and length, **not
-factual correctness**; use app schema validation and human review before manually applying anything.
+Everything in it is a declaration, not code: `context` says what may be read, `pointers` is the allowlist
+the suggest tab and the tool enum draw from, `maxBytes` is the cap, and `writeBack: false` is the contract.
 
-`npm run e2e` intercepts both same-origin API calls with authorized response fixtures, checks the
-bounded snapshots, produces a read-only suggestion, then repeats suggestion offline from a pasted
-snapshot. Real authenticated deployments remain to be validated within each upstream application.
+## What these hosts changed in the SDK
+
+Both were built by reading the same documents a new host reads, and each one found something the contract
+did not yet say. What was learned went upstream; what was specific stayed here.
+
+| found by building a host | where it ended up |
+|---|---|
+| a tool result larger than its declared budget killed the turn | `fitToolResult` in the SDK, and a measured fit rather than a character count |
+| the model's reasoning reached the reader on a retry round | every round is seeded; a repair that narrates the prompt is discarded |
+| a bundle with a fixed name and no `Cache-Control` served stale after a deploy | the pack stamps `version.json`'s revision into the acceptance page; hosts bust the entry |
+| context URLs were resolved against the page, so a nested base broke | manifest-relative resolution, in the SDK |
+| `context.credentials` was validated and then ignored by every read | honoured, with one translation into the vocabulary `fetch()` accepts |
+| an application-level document was assumed to be help text | `context.app.kind: "help" \| "content"` |
+| a formless host could not offer a ranked read of a bigger corpus | the context ladder rung 4, documented rather than coded |
+| one host's routes shipped as SDK defaults | removed: the caller declares its route, and the loader keeps none |
+
+That last row is the rule these examples exist to demonstrate: **the SDK never learns an application's
+routes, and an application never learns the SDK's prompt template.**
+
+## Running what is here
+
+```sh
+npm run dev        # /                    chat and model manager
+                   # /catalogue-qa.html   catalogue Q&A, evidence-checked
+                   # /field-suggest.html  snapshot → local suggestion draft
+                   # /benchmark.html      12 authored general-task cases
+```
+
+- `catalogue/public-catalogue-demo.js` — reads one study from a public catalogue demo host, with no
+  credentials, and trims it to `{idno, title, abstract}`. This is the one file here that names a specific
+  host, because a caller has to: the SDK takes the route **from the caller**.
+- `../demo/field-suggest-view.js` — mounts `mountContextWidget` with two shapes (a catalogue study and a
+  record field), which is the smallest honest example of a host declaring what it can read.
+- `../demo/catalogue-qa-view.js` — the evidence-checked Q&A view: it asks the model for a verbatim quote
+  and checks that the quote occurs in the snapshot it sent.
+
+## The laptop pilot, as it was run
+
+Two paths, and the first needs no extension:
+
+**Path A — browser only.** Open the app once while online so the shell and model are cached. Load one
+published study from the public catalogue demo, inspect the title and abstract, then ask about it. The model
+runs locally and the app checks whether the model's evidence quote appears in the source; an unverified
+answer is marked as such and has to be checked by a person. Turn off the network and reopen the same origin:
+the saved snapshot and the cached model still answer. Opening a new catalogue page still needs the
+catalogue's server — local inference does not make a server-backed application offline.
+
+**Path B — Chrome side panel.** Only where an organization's extension policy allows it, and never by
+switching to a different Chrome build to evade that policy. It runs the same SDK in its own page, and
+`activeTab` grants temporary access to the page the user is on.
+
+For a record editor, the honest trial is a **sanitized snapshot**: export a bounded field or record through
+the organization's own approved workflow, paste it, and ask for a suggestion locally. Do not paste
+credentials or restricted data into a page hosted elsewhere, and note that this does not exercise the
+host's live authentication.
+
+## Honest limits of these two
+
+- A suggestion is a draft with a reason. It is not schema-validated against the host's template, and it is
+  not a factual claim: the host validates, a human approves, and only then does anything change.
+- The evidence check proves a quote occurs in the snapshot. It does not prove the interpretation is right.
+- Both hosts were exercised on a laptop and a phone. Anything else is unverified until it is run — see
+  [`../docs/DEVICE_VALIDATION.md`](../docs/DEVICE_VALIDATION.md).
+- The metadata editor's live authenticated API was exercised against a local deployment, with fixtures in
+  the automated tests. A private deployment with different access rules should be re-checked, which is what
+  [`../portable-slm/host-check.html`](../integrations/host-check.html) is for.

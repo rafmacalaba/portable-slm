@@ -15,8 +15,8 @@ export default defineConfig({
     outDir: "../dist", emptyOutDir: true, target: "es2022",
     rollupOptions: { input: {
       chat: new URL("./demo/index.html", import.meta.url).pathname,
-      nada: new URL("./demo/nada.html", import.meta.url).pathname,
-      review: new URL("./demo/review.html", import.meta.url).pathname,
+      catalogueQa: new URL("./demo/catalogue-qa.html", import.meta.url).pathname,
+      review: new URL("./demo/field-suggest.html", import.meta.url).pathname,
       benchmark: new URL("./demo/benchmark.html", import.meta.url).pathname,
     } },
   },
@@ -34,7 +34,7 @@ function precacheServiceWorker() {
     generateBundle(_, bundle) {
       const publicFiles = readdirSync(new URL("./demo/public", import.meta.url));
       // Vite emits HTML after generateBundle; list each HTML entry explicitly.
-      const files = ["./", "./nada.html", "./review.html", "./benchmark.html", ...Object.keys(bundle).map((f) => `./${f}`), ...publicFiles.map((f) => `./${f}`)];
+      const files = ["./", "./catalogue-qa.html", "./field-suggest.html", "./benchmark.html", ...Object.keys(bundle).map((f) => `./${f}`), ...publicFiles.map((f) => `./${f}`)];
       const source = readFileSync(new URL("./demo/sw.js", import.meta.url), "utf8")
         .replace("self.__PRECACHE__", JSON.stringify(files))
         .replace("self.__VERSION__", JSON.stringify(String(Date.now())));

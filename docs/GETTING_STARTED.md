@@ -1,8 +1,8 @@
 # Getting started: adopt the assistant in an application
 
-This is the on-ramp. It is deliberately short and linear: three commands to something that works and has
+This is the entry point. It is deliberately short and linear: three commands to something that works and has
 been verified, then a table telling you which parts are yours. The depth lives in the documents linked at
-the end — read this page first, then only the one you need.
+the end, read this page first, then only the one you need.
 
 Everything here is a **read-only** integration. The assistant reads a snapshot you choose and proposes
 text; your application keeps validation, saving and publishing. There is no cloud inference, no API key,
@@ -62,8 +62,8 @@ npm run pack:site -- --out ../my-app/public/portable-slm --runtimes onnx
 ```
 
 `public/portable-slm/` now holds the SDK, and four files are yours to edit: `portable-slm.host.json`,
-`app.md`, `host.html`, `STARTER.md`. `STARTER.md` is a checklist generated for your shape — work through
-it. A starter is safe to re-run: it never overwrites a file you already have, and the pack only prunes
+`app.md`, `host.html`, `STARTER.md`. `STARTER.md` is a checklist generated for your shape, work through
+it. A starter is safe to rerun: it never overwrites a file you already have, and the pack only prunes
 files it generated itself.
 
 Then mount it. Two elements and a script tag, in your own layout:
@@ -75,23 +75,23 @@ Then mount it. Two elements and a script tag, in your own layout:
 ```
 
 The manifest is read from next to `embed.js`, so no `data-manifest` is needed. `data-launcher` and
-`data-resize` are opt-in: a bare `<div data-pslm>` mounts the panel with no launcher, which is the right
+`data-resize` are off by default: a bare `<div data-pslm>` mounts the panel with no launcher, which is the right
 thing on a page you fully control.
 
 ## The shape you are
 
 | Shape | `--shape` | Declares | What the user gets |
 |---|---|---|---|
-| No API: a docs site, a blog, a personal site | `static` | `context.app` — one bounded document | chat grounded in that document |
+| No API: a docs site, a blog, a personal site | `static` | `context.app`: one bounded document | chat grounded in that document |
 | One object with a form: a record editor, a CRM entry | `record` | `context.record`, `context.field`, one read tool | chat, a Suggest tab, and *Fill this field* |
-| Many objects and files | build on `record` | add `context.datafile` (+ `pslm.suggest-datafile-description`) | as above, plus data-file drafts. Not scaffolded: see the Metadata Editor reference integration |
+| Many objects and files | build on `record` | add `context.datafile` (+ `pslm.suggest-datafile-description`) | as above, plus data-file drafts. Not scaffolded: see the record editor reference integration |
 
-Those are the ladder's rungs 1–3. Rung 4 — a **ranked read of your own corpus inside `onContext(question)`** —
+Those are the ladder's rungs 1, 3. Rung 4, a **ranked read of your own corpus inside `onContext(question)`**,
 is what you climb to when the content outgrows `maxBytes`, and it needs no SDK change. The stopping rule,
 the corpus shape and the three rules retrieval must not violate are in
 [CONTEXT_PROVIDERS.md](CONTEXT_PROVIDERS.md).
 
-`static` is not a cut-down version of the others — it is the honest shape for a host with no API. Satisfy
+`static` is not a cut-down version of the others. It is the honest shape for a host with no API. Satisfy
 this one first; every later level is additive.
 
 ## What you own, precisely
@@ -109,8 +109,8 @@ decide what the string is.**
 | whether a draft may reach a form | **you** (`data-fill`, your own form binding) |
 | append a write, save, publish | **you**, after a human approves. Always |
 
-Concretely, a host writes: a manifest, a grounding document or endpoints, a mount, some CSS, and — if it
-wants them — a fill binding and a log endpoint. Anything else you find yourself writing is probably a bug
+Concretely, a host writes: a manifest, a grounding document or endpoints, a mount, some CSS, and, if it
+wants them, a fill binding and a log endpoint. Anything else you find yourself writing is probably a bug
 in your reading of this page, or a gap worth reporting.
 
 ## Verify, do not trust
@@ -122,10 +122,10 @@ open https://your-app.example/portable-slm/host-check.html?manifest=/portable-sl
 Add `&sid=<a test record>` for a `record` host, and `&log=<path>` if you built a log endpoint. Run it
 signed in as a real user, and paste the report into your ticket. How to read it:
 
-- **PASS** — a mechanical contract check succeeded (same-origin, byte cap, guard fired, endpoint answered).
-- **WARN** — something you have not declared yet, or a limitation worth knowing (`no mirror declared`).
-- **SKIP** — the check does not apply to what you declared. A skip is never a pass.
-- **FAIL** — a contract violation. Fix it before shipping.
+- **PASS**: a mechanical contract check succeeded (same-origin, byte cap, guard fired, endpoint answered).
+- **WARN**: something you have not declared yet, or a limitation worth knowing (`no mirror declared`).
+- **SKIP**: the check does not apply to what you declared. A skip is never a pass.
+- **FAIL**: a contract violation. Fix it before shipping.
 
 The page also prints what only a human can confirm: offline behaviour, a suggestion that no request leaves
 your origin, and that a fill is unsaved until someone saves it.
@@ -137,7 +137,7 @@ your origin, and that a fill is unsaved until someone saves it.
   use them for your API routes.
 - **Model weights are per browser origin, and never leave it.** Installed on `localhost:8080` is invisible
   to `localhost:4321`, and to production. Every origin pays once per browser. They cannot be imported from
-  disk for ONNX models — a multi-file export is not a file you can hand the page.
+  disk for ONNX models. A multi-file export is not a file you can hand the page.
 - **No COOP/COEP headers means single-threaded WASM.** Most static hosts cannot send them. Slower, not
   broken; the panel says `single-thread`.
 - **The bundle ships no `Cache-Control`.** Browsers cache it heuristically, so a deploy can serve a stale
@@ -160,7 +160,7 @@ first check is that stamp.
 |---|---|
 | [HOST_CONTRACT.md](HOST_CONTRACT.md) | the manifest field by field, the task list, the acceptance definition |
 | [CHAT.md](CHAT.md) | attributes, events, theming, the answers' provenance and completeness |
-| [HOST_INTEGRATION.md](HOST_INTEGRATION.md) | the two worked integrations and the bundled-pilot deployment |
+| [examples/README.md](examples/README.md) | the two worked integrations and the bundled-pilot deployment |
 | [TOOLS.md](TOOLS.md) | authoring a tool, network policy, what the limits are |
 | [CONTEXT_PROVIDERS.md](CONTEXT_PROVIDERS.md) | **where context comes from**: the five-rung ladder, when to stop climbing, and the ownership seam in detail |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | how the pieces fit and why the boundaries are where they are |

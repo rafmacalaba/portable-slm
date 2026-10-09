@@ -6,7 +6,7 @@ export function mountBenchmark(root, ai, { embedded = false } = {}) {
   root.innerHTML = `
     <h2>General-task benchmark</h2>
     <p>Runs 12 short, authored fixtures on this device—classification, JSON extraction, grounded QA, instruction following and a fixture-based tool call. No prompts leave the device. A small smoke comparison, not a published quality leaderboard.</p>
-    ${embedded ? "" : '<p><a href="./">Chat / model manager</a> · <a href="./nada.html">NADA Q&amp;A</a> · <a href="./review.html">Metadata review</a></p>'}
+    ${embedded ? "" : '<p><a href="./">Chat / model manager</a> · <a href="./catalogue-qa.html">Catalogue Q&amp;A</a> · <a href="./field-suggest.html">Field suggestion</a></p>'}
     <label>Installed model <select id="model"></select></label>
     <label>Engine <select id="engine"><option value="auto">Automatic</option><option value="cpu">CPU</option><option value="webgpu">WebGPU</option></select></label>
     <button id="run" type="button">Run / resume benchmark</button><button id="export" type="button" disabled>Export JSON</button><button id="reset" type="button">Reset results</button>

@@ -7,7 +7,7 @@
 import { createLocalSLM } from "../src/index.js";
 import { MODELS } from "../src/models.js";
 import { defaultTools } from "../src/tools.js";
-import { SUGGEST_FIELD_TASK, suggestMetadata } from "./metadata-review.js";
+import { SUGGEST_FIELD_TASK, suggestMetadata } from "./field-suggest.js";
 import {
   allowsTask, byteCap, buildHostTools, DECLARED_POINTERS, expand, fileSubjectChanged, fitToolResult,
   hostTools, mountMode, validateManifest,

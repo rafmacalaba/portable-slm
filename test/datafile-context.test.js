@@ -24,7 +24,7 @@ const rows = (from, to) => Array.from({ length: to - from }, (_, i) => ({
 test("datafile mount mode needs record + declared endpoint + active file", () => {
   const manifest = validateManifest({
     apiVersion: HOST_API_VERSION,
-    app: { name: "Metadata Editor" },
+    app: { name: "Example App" },
     context: {
       record: { url: "/api/record/{id}" },
       datafile: { url: "/api/file/{id}/{file_id}" },

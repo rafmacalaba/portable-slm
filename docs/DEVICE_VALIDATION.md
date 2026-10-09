@@ -16,7 +16,7 @@ Keep source GGUF available for recovery. Do not record credentials or private da
 1. Enable airplane mode and disable Wi-Fi/cellular. Confirm no network is available.
 2. Close the app/browser completely; reopen the same app origin.
 3. Check that app shell and chosen model both report ready. Load the model.
-4. Run three short, representative non-sensitive tasks. Confirm generated text arrives and no task
+4. Run three short, representative not sensitive tasks. Confirm generated text arrives and no task
    attempts external access. Stop a longer generation once to verify cancel remains responsive.
 5. Close/reopen once more and repeat a task. Record completion, reload/crash, error and recovery.
 6. If storage was cleared or evicted, confirm UI reports missing model; restore from the local GGUF
@@ -32,7 +32,7 @@ Keep source GGUF available for recovery. Do not record credentials or private da
 
 ## Result record
 
-For each run, capture only non-sensitive observations: setup time, model import/download success,
+For each run, capture only not sensitive observations: setup time, model import/download success,
 ready-offline result, chosen engine, task completion, approximate response time, storage/quota errors,
 crashes/reloads and whether local-file recovery worked. This phase is about reliable setup and
-recovery—not comparative model speed or answer-quality claims.
+recovery, not comparative model speed or answer-quality claims.

@@ -1,6 +1,6 @@
 {
   "name": "portable-slm",
-  "version": "0.1.5",
+  "version": "0.2.0",
   "description": "UI-agnostic, offline-capable small language model runtime for the browser (WebGPU with WASM fallback).",
   "type": "module",
   "exports": {
@@ -8,21 +8,21 @@
       "types": "./src/index.d.ts",
       "default": "./src/index.js"
     },
-    "./metadata-widget": {
-      "types": "./integrations/metadata-widget.d.ts",
-      "default": "./integrations/metadata-widget.js"
+    "./widget": {
+      "types": "./integrations/widget.d.ts",
+      "default": "./integrations/widget.js"
     },
-    "./metadata-context": {
-      "types": "./integrations/metadata-context.d.ts",
-      "default": "./integrations/metadata-context.js"
+    "./snapshot-context": {
+      "types": "./integrations/snapshot-context.d.ts",
+      "default": "./integrations/snapshot-context.js"
     },
-    "./metadata-review": {
-      "types": "./integrations/metadata-review.d.ts",
-      "default": "./integrations/metadata-review.js"
+    "./field-suggest": {
+      "types": "./integrations/field-suggest.d.ts",
+      "default": "./integrations/field-suggest.js"
     },
-    "./nada-qa": {
-      "types": "./src/nada-qa.d.ts",
-      "default": "./src/nada-qa.js"
+    "./qa-evidence": {
+      "types": "./src/qa-evidence.d.ts",
+      "default": "./src/qa-evidence.js"
     },
     "./openai-compatible": {
       "types": "./src/openai-compatible.d.ts",
@@ -49,13 +49,13 @@
   },
   "files": [
     "src",
-    "integrations/metadata-widget.js",
-    "integrations/metadata-widget.d.ts",
-    "integrations/metadata-context.js",
-    "integrations/metadata-context.d.ts",
-    "integrations/metadata-review.js",
-    "integrations/metadata-review.d.ts",
-    "examples/metadata-review.js",
+    "integrations/widget.js",
+    "integrations/widget.d.ts",
+    "integrations/snapshot-context.js",
+    "integrations/snapshot-context.d.ts",
+    "integrations/field-suggest.js",
+    "integrations/field-suggest.d.ts",
+    "examples/field-suggest.js",
     "bench",
     "integrations/embed.js",
     "integrations/logging.js",

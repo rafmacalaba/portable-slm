@@ -49,8 +49,8 @@ async function startServer() {
   mkdirSync("dist/portable-slm", { recursive: true });
   cpSync(hostBundle, "dist/portable-slm", { recursive: true });
   writeFileSync("dist/host-fixture.html", `<!doctype html><meta charset="utf-8"><title>Host fixture</title>
-    <a id="host-nada" href="./portable-slm/nada.html#source=nada&amp;id=Test002_OD&amp;apiBase=%2Findex.php%2Fapi%2F&amp;catalogBase=%2Findex.php%2Fcatalog%2F">Ask about this NADA study</a>
-    <a id="host-editor" href="./portable-slm/review.html#source=metadata-editor&amp;id=TEST-EDITOR-1&amp;apiBase=%2Findex.php%2Fapi%2F">Review this Editor field</a>`);
+    <a id="host-nada" href="./portable-slm/catalogue-qa.html#source=nada&amp;id=Test002_OD&amp;apiBase=%2Findex.php%2Fapi%2F&amp;catalogBase=%2Findex.php%2Fcatalog%2F">Ask about this NADA study</a>
+    <a id="host-editor" href="./portable-slm/field-suggest.html#source=metadata-editor&amp;id=TEST-EDITOR-1&amp;apiBase=%2Findex.php%2Fapi%2F">Review this Editor field</a>`);
   const server = spawn("node_modules/.bin/vite", ["preview", "--port", String(PORT), "--strictPort"], { stdio: "pipe", env: { ...process.env, NO_COLOR: "1" } });
   await new Promise((resolve, reject) => {
     server.stdout.on("data", (d) => /Local/.test(String(d)) && resolve());
@@ -158,7 +158,7 @@ try {
       request.respond({ status: 200, contentType: "application/json", body: JSON.stringify({ idno: "TEST-2030", study_desc: { title_statement: { title: "Study from API" }, study_info: { abstract: "Authorized catalog abstract" } } }) });
     } else request.continue();
   });
-  await integration.goto(`${URL}review.html`);
+  await integration.goto(`${URL}field-suggest.html`);
   await integration.select("#source", "metadata-editor");
   await integration.click("#read-api");
   await integration.waitForFunction(() => document.querySelector("#snapshot").value.includes("Household Survey from API"), { timeout: 20_000 });
@@ -176,7 +176,7 @@ try {
   nada.on("request", (request) => request.url().includes("nada-demo.ihsn.org/index.php/api/catalog/Test001_OD")
     ? request.respond({ status: 200, contentType: "application/json", headers: { "Access-Control-Allow-Origin": "*" }, body: studyFixture })
     : request.continue());
-  await nada.goto(`${URL}nada.html`);
+  await nada.goto(`${URL}catalogue-qa.html`);
   await nada.waitForSelector("#nada-fetch");
   await nada.click("#nada-fetch");
   await nada.waitForFunction(() => document.querySelector("#nada-status").textContent.includes("Study saved"), { timeout: 20_000 });
@@ -240,15 +240,15 @@ try {
     document.body.append(frame);
   });
   const embedded = await (await host.waitForSelector("#embedded-app")).contentFrame();
-  await embedded.waitForFunction(() => !document.querySelector('button[data-view="review"]').hidden);
-  await embedded.click('button[data-view="review"]');
+  await embedded.waitForFunction(() => !document.querySelector('button[data-view="field-suggest"]').hidden);
+  await embedded.click('button[data-view="field-suggest"]');
   await embedded.waitForFunction(() => document.querySelector("#embedded-view:not([hidden]) #metadata-widget #status")?.textContent.includes("Model ready"), { timeout: 20_000 });
   assert.match(embedded.url(), /localhost:4173\/$/); // outer app must not navigate
   await embedded.click("#back-to-chat");
   await embedded.click('button[data-view="benchmark"]');
   await embedded.waitForSelector("#embedded-view:not([hidden]) #compare");
   await embedded.click("#back-to-chat");
-  await embedded.click('button[data-view="nada"]');
+  await embedded.click('button[data-view="catalogue-qa"]');
   await embedded.waitForFunction(() => document.querySelector("#embedded-view:not([hidden]) #nada-source")?.textContent.includes("Popstan"));
   assert.match(embedded.url(), /localhost:4173\/$/);
   console.log("  embedded links mount consumers in the same document and share model storage");
@@ -289,7 +289,7 @@ try {
   console.log("  4 consecutive chat turns completed; diagnostics persisted");
   await page.close();
   const review = await browser.newPage();
-  await review.goto(`${URL}review.html`);
+  await review.goto(`${URL}field-suggest.html`);
   await review.waitForFunction(() => document.querySelector("#status").textContent.includes("Model ready"), { timeout: 20_000 });
   await review.click("#suggest");
   await review.waitForFunction(() => /Suggestion ready|Could not create/.test(document.querySelector("#status").textContent), { timeout: 120_000 });
@@ -297,7 +297,7 @@ try {
   console.log("  second UI used same cached model offline for a metadata suggestion");
   await review.close();
   const nada = await browser.newPage();
-  await nada.goto(`${URL}nada.html`);
+  await nada.goto(`${URL}catalogue-qa.html`);
   await nada.waitForFunction(() => document.querySelector("#nada-source")?.textContent.includes("Popstan"), { timeout: 20_000 });
   await nada.waitForFunction(() => !document.querySelector("#nada-ask").disabled, { timeout: 20_000 });
   await nada.type("#nada-question", "What is the study title?");

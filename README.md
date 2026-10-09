@@ -37,32 +37,53 @@ The package is layered so a host can adopt as little as it wants:
 
 | Layer | Artifact | What it is |
 |---|---|---|
-| **Chat (vanilla)** | `dist/chat.js`, `dist/chat.html`, `portable-slm/chat` | framework-free `<pslm-chat>` — install, import, load, stream, tools, approval, provenance. Runs with no host at all |
+| **Chat (vanilla)** | `dist/chat.js`, `dist/chat.html`, `portable-slm/chat` | framework-free `<pslm-chat>`: install, import, load, stream, tools, approval, provenance. Runs with no host at all |
 | **Core SDK** | `portable-slm` | verified GGUF storage, resumable download, WebGPU/CPU inference, bounded tool loop |
-| **Host adapters** | `portable-slm/embed`, `metadata-*`, `nada-qa` | manifest-driven context and tasks for a specific host application |
+| **Host adapters** | `portable-slm/embed`, `./widget`, `./snapshot-context`, `./field-suggest`, `./qa-evidence` | manifest-driven context and tasks for a specific host application |
 
-NADA and Metadata Editor are the worked examples — the reference for "a host builds on the vanilla
-component without forking it" — not exclusive targets. This is an SDK/harness prototype, not yet a
-published package or a native integration in either example host.
+## Put it in your application
 
-- [Getting started — the three-command on-ramp for a host application](docs/GETTING_STARTED.md)
-- [Chat — vanilla usage, attributes, events, theming](docs/CHAT.md)
-- [Tools — defaults, network policy, authoring](docs/TOOLS.md)
-- [Context providers — how a host feeds the assistant](docs/CONTEXT_PROVIDERS.md)
-- [Making the assistant answer better — corpus, retrieval, evaluation, fine-tuning](docs/ANSWER_QUALITY.md)
-- [Architecture and boundaries](docs/ARCHITECTURE.md)
-- [Worked host integrations: NADA and Metadata Editor](docs/HOST_INTEGRATION.md)
-- [Host integration contract (`pslm-host/1`): manifest, embed levels, acceptance](docs/HOST_CONTRACT.md)
-- [Agent modes: declared tools, engine choice, model pins, MCP and search boundaries](docs/AGENT.md)
-- [Laptop pilot: NADA + Metadata Editor](docs/LAPTOP_PILOT.md)
+Three commands, into the directory your application already serves statically:
+
+```sh
+npm ci && npm run build:embed                                  # once, in this repository
+npm run scaffold -- --out ../my-app/public/portable-slm --shape static   # or --shape record
+npm run pack:site -- --out ../my-app/public/portable-slm --runtimes onnx
+```
+
+Then mount it, and write the manifest and the document it answers from:
+
+```html
+<div id="pslm-panel" class="pslm" data-pslm data-launcher="Ask this app" data-resize></div>
+<script type="module" src="/portable-slm/embed.js"></script>
+```
+
+`--shape static` is a host with no API: one bounded document, chat only. `--shape record` is a host with an
+API about one object: a snapshot per question, one editable field, one declared read tool. Both emit a
+manifest that already passes validation and a `STARTER.md` checklist naming what to edit.
+
+- **[Getting started](docs/GETTING_STARTED.md)**: the same path with the diagrams, the three host shapes,
+  and the ownership table. Start here.
+- **[The host contract](docs/HOST_CONTRACT.md)**: the `pslm-host/1` manifest field by field, the task ids,
+  and what "accepted" means.
+- **[Where context comes from](docs/CONTEXT_PROVIDERS.md)**: the five-rung ladder, and where to stop.
+- **[Extensions](docs/ADDONS.md)**: the six places to attach, and what each one owes.
+- **[Chat](docs/CHAT.md)**: attributes, events, theming, the completeness verdict.
+- **[Tools](docs/TOOLS.md)**: authoring one, network policy, the limits the loop enforces.
+- **[Architecture](docs/ARCHITECTURE.md)**: the layers, the module map, and why the boundaries are there.
+- **[Harness](docs/HARNESS.md)**: what is enforced in code rather than asked for in a prompt.
+- **[Answer quality](docs/ANSWER_QUALITY.md)**: corpus, retrieval, evaluation, and the bounded-context reach.
+- **[Agent modes](docs/AGENT.md)**: declared tools, engine choice, model pins, MCP and search boundaries.
+- **[Worked integrations](examples/README.md)**: two real hosts, their manifests and their routes. The only
+  place in the documentation that names an application.
 
 Three pages ship in the bundle and need no build step of their own: `chat.html` (the vanilla
 surface), `host-check.html` (run the acceptance checks on your own origin) and
-`framework-options.html` (compare implementation approaches — vanilla custom element, lit, Stencil,
-React, Vue, Svelte — and read the recommendation).
+`framework-options.html` (compare implementation approaches, vanilla custom element, lit, Stencil,
+React, Vue, Svelte, and read the recommendation).
 ### The documents, by kind
 
-**Contracts** — normative. A host implements these, and `host-check.html` verifies them.
+**Contracts**: normative. A host implements these, and `host-check.html` verifies them.
 
 | document | what it fixes |
 |---|---|
@@ -71,7 +92,7 @@ React, Vue, Svelte — and read the recommendation).
 | [LOGGING / §logging](docs/HOST_CONTRACT.md#logging) | the optional log endpoint a host implements |
 | [TOOLS.md](docs/TOOLS.md) | what a tool may be, and the limits the loop enforces |
 
-**Guides** — how to build with it.
+**Guides**: how to build with it.
 
 | document | read when |
 |---|---|
@@ -82,16 +103,16 @@ React, Vue, Svelte — and read the recommendation).
 | [HARNESS.md](docs/HARNESS.md) | what is enforced in code rather than asked for in a prompt |
 | [ANSWER_QUALITY.md](docs/ANSWER_QUALITY.md) | making answers good: corpus, retrieval, evaluation, and the bounded-context arithmetic |
 | [AGENT.md](docs/AGENT.md) | agent modes, engine choice, model pins, MCP and search boundaries |
-| [HOST_INTEGRATION.md](docs/HOST_INTEGRATION.md) | the two worked integrations, end to end |
+| [examples/README.md](examples/README.md) | the two worked integrations, end to end |
 | [AGENTS.md](AGENTS.md) | working **in this repository**: invariants, module map, how to verify a change |
 
-**Status** — what is proven, and what is not. Read before trusting any of the above.
+**Status**: what is proven, and what is not. Read before trusting any of the above.
 
 | document | what it records |
 |---|---|
-| [IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md) | status, release gates, the gated retrieval follow-up |
+| [IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md) | status, release gates, the gated retrieval work |
 | [DEVICE_VALIDATION.md](docs/DEVICE_VALIDATION.md) | what has been run on which device, and what has not |
-| [LAPTOP_PILOT.md](docs/LAPTOP_PILOT.md) | the first real workflow, on real hardware |
+| [examples/README.md](examples/README.md) | the first real workflow, on real hardware |
 
 - [Chrome extension guide](integrations/chrome-extension/README.md)
 - [Metadata consumer example](examples/README.md)
@@ -105,16 +126,16 @@ machine, the model bytes are verified by checksum, and it runs with no network a
 
 | Right tool when | Wrong tool when |
 |---|---|
-| the material cannot leave the network — embargoed or confidential statistics | being wrong is costly: numbers, dates, quotes, decisions |
-| no model service is reachable — field laptops, blocked mirrors, air-gapped offices | the answer needs knowledge the supplied context does not contain |
+| the material cannot leave the network: embargoed or confidential statistics | being wrong is costly: numbers, dates, quotes, decisions |
+| no model service is reachable: field laptops, blocked mirrors, air-gapped offices | the answer needs knowledge the supplied context does not contain |
 | a stated policy rules out pasting into a hosted assistant | long reasoning or multi-step analysis |
-| someone drafts short text and a human edits it | volume — hundreds of records to process |
+| someone drafts short text and a human edits it | volume: hundreds of records to process |
 | a team needs to see what local inference actually is | anything autonomous, browsing, or acting without review |
 
 The rule that settles most arguments: **the answer must be recoverable from the context you supply.**
 In the snapshot → useful. Needs general knowledge → unreliable. Needs judgement → not a model's job.
 The grounding stamp and the *"not in the record"* behaviour exist to make the failure visible, not to
-fix the model — which is also why [answer quality is a corpus problem, not a model
+fix the model, which is also why [answer quality is a corpus problem, not a model
 problem](docs/ANSWER_QUALITY.md).
 
 ## Try the vanilla chat
@@ -149,7 +170,7 @@ No manifest, no record, no knowledge of what the page is about: chat, install, i
 Portable SLM's own description of itself is always in the prompt (`composeContext`, append-only), so
 the assistant can say what it is and what it cannot do; a host's `onContext` text is added after it,
 never in place of it. Adding a manifest and a record id is what unlocks grounded answers about data,
-and a record-less page can declare `context.app` to be grounded in the application's own help text
+and a page with no record can declare `context.app` to be grounded in the application's own help text
 instead. The whole ladder is
 [`HOST_CONTRACT.md` §1b](docs/HOST_CONTRACT.md#1b-the-panel-degrades-it-does-not-refuse).
 
@@ -158,8 +179,8 @@ instead. The whole ladder is
 ```sh
 npm install
 npm run dev                 # web chat: http://localhost:5173/
-                            # NADA study Q&A: http://localhost:5173/nada.html
-                            # metadata review: http://localhost:5173/review.html
+                            # catalogue Q&A: http://localhost:5173/catalogue-qa.html
+                            # metadata review: http://localhost:5173/field-suggest.html
                             # general benchmark: http://localhost:5173/benchmark.html
 npm run build && npm run preview  # offline-capable static web build, port 4173
 npm run build:embed    # dist/chat.js + dist/chat.html + dist/embed.js + host-check.html + embed-assets
@@ -168,7 +189,7 @@ npm run pack:site -- --out <dir> --runtimes onnx|wllama|both   # the bundle subs
                        # both builds also write dist/version.json (version, gitSha, builtAt)
 npm run build:extension     # unpacked desktop Chrome extension in dist-extension/
 npm test                    # SHA-256, store, agent/tool safety, example adapters
-npm run e2e                 # Chrome: mirror/import → chat + NADA Q&A + review + benchmark, offline
+npm run e2e                 # Chrome: mirror/import → chat + catalogue Q&A + review + benchmark, offline
 # Developer-only extension test, in an environment where unpacked extensions are authorized:
 CHROME_PATH=/path/to/approved-test-chrome npm run e2e:extension
 ```
@@ -233,32 +254,25 @@ optional task module only after its model/runtime and browser limits are validat
 placeholder models to the pinned GGUF catalog.
 
 The host must bundle JS/WASM locally and precache its app assets for offline use. Models and cache
-belong to the **browser origin**: the extension, this app and a third-party site each need their
+belong to the **browser origin**: the extension, this app and an external site each need their
 own import/download. See [`src/index.d.ts`](src/index.d.ts) for the complete API.
 
-## NADA study Q&A (first laptop workflow)
+## Evidence-checked Q&A (a shipped view)
 
-Open [NADA study Q&A](https://rafmacalaba-portable-slm.static.hf.space/nada.html) in a direct
-first-party tab, or use the **NADA study Q&A** button inside the HF Space so it shares that
-embedded app's model cache. Load one published NADA study while online. The app stores its short
-public title/abstract snapshot locally for offline reopen. Ask a question: it requests a verbatim
-source quote from the model and checks that the quote occurs in the source. Unsupported or missing
-evidence is visibly marked **unverified**. Quote matching does *not* prove the interpretation is
-correct. This is read-only; no NADA account or write API. See `src/nada-qa.js`.
+The app ships `/catalogue-qa.html`, which demonstrates the strongest grounding claim this SDK makes. Load one
+published study while online and it stores a bounded title/abstract snapshot locally, so the view reopens
+offline with a cached model. Ask a question and the model is asked for a verbatim quote from that snapshot;
+the quote is then checked against the snapshot it sent. A quote that does not appear is marked
+**unverified**, and a quote that does appear is not proof that the interpretation is right: it is proof that
+the answer was recoverable from the supplied context. Read-only, no account, no write API. The check itself is
+`src/qa-evidence.js`, and it is what a host should copy for any grounded Q&A task.
 
-## Worked integrations: NADA and Metadata Editor
+## Worked integrations
 
-`integrations/metadata-context.js` reads one authorized Metadata Editor field or NADA study via
-same-origin APIs. `integrations/metadata-review.js` exports `suggestMetadata(ai, request)`;
-`src/nada-qa.js` exports `answerStudyQuestion(ai, study, question)`. Both load a local model and
-return read-only results for the host to review. Metadata Editor schema validation, save and publish
-remain host responsibilities. `/review.html` is also a demo consumer; it can be bundled under a
-host's `/portable-slm/` path and launched with same-origin API context. Browser E2E covers this with
-fixtures. Local launch-link patches sit in sibling NADA and Metadata Editor clones only; no upstream
-integration is merged or approved. The initial `TEST-2030` record is **fictional sample input**.
-npm publication is disabled. A host that wants to verify instead of trust runs
-`/portable-slm/host-check.html` on its own origin ([acceptance page](docs/HOST_CONTRACT.md#7-acceptance-page)).
-See [the host integration contract](docs/HOST_INTEGRATION.md).
+Two real host applications shaped this SDK: a record editor with a curator ACL, and a public data catalogue.
+Their manifests, routes, tasks, and everything they changed in the SDK are documented in
+[`examples/README.md`](examples/README.md) — the only place in this documentation that names an application.
+The contract itself is host-agnostic, and a host of neither shape integrates the same way.
 
 ## Offline setup
 
@@ -268,23 +282,23 @@ verifies the **same pinned SHA-256** regardless of source. **Offline readiness**
 assets and the verified model separately; then reopen the site without internet. The model manager
 shows approximate browser storage use/quota and installed or partial models. On `Quota exceeded`,
 select an unused model and **Remove** it, then resume; existing models are never deleted automatically.
-HF's embedded Space and a direct static-app tab may have separate storage partitions, so a model
+HF's embedded Space and a direct static app tab may have separate storage partitions, so a model
 installed in one may not appear in the other. Offline tools work; online Wikipedia search is neither advertised to the model nor run
-unless enabled and approved. Browser storage may be evicted, so keep the source GGUF for re-import.
+unless enabled and approved. Browser storage may be evicted, so keep the source GGUF for reimport.
 
 ## Compare models
 
-Inside the [Hugging Face Space](https://huggingface.co/spaces/rafmacalaba/portable-slm), use the
-**Metadata review** and **Benchmark** buttons at the top of chat. They mount in the same embedded
-app and reuse its model cache. HF may redraw its iframe once shortly after opening the Space;
-wait for the app status to settle before using the buttons. Direct
-[benchmark.html](https://rafmacalaba-portable-slm.static.hf.space/benchmark.html) is also available,
-but a direct tab may have storage partitioned separately from the HF embed and need a re-import.
-After installing a model on the chosen origin, the benchmark runs 12 short authored cases covering
-classification, JSON extraction, grounded QA, instruction following and a fixture-based tool call. Results checkpoint
-after each case, resume after reload, compare installed models, and export JSON. This is a smoke
-benchmark—not a broad quality claim. See `bench/tasks.js` and `bench/run.js`.
+The app has two views for comparing pinned models: `/benchmark.html` runs 12 short authored cases covering
+classification, JSON extraction, grounded QA, instruction following and a fixture-based tool call, and the
+chat page's **Field suggestion** and **Benchmark** buttons mount the same views in place, reusing one loaded
+model.
 
+Results checkpoint after each case, resume after a reload, compare installed models, and export JSON. This is
+a smoke benchmark, not a broad quality claim; it exists to tell two models apart on your own device. See
+`bench/tasks.js` and `bench/run.js`.
+
+A view mounted in this app shares one model cache with the chat page. A view opened as its own tab on another
+origin does not: model storage is per origin, so it needs its own install.
 ## License
 
 Portable SLM source code is MIT licensed; see [`LICENSE`](LICENSE). wllama is MIT licensed.

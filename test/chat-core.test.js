@@ -87,13 +87,13 @@ test("the shipped context is always present and hosts can only append to it", ()
 });
 
 test("host prompts allow general chat while bounding application-specific claims", () => {
-  const record = assistantSystemPrompt({ app: "Metadata Editor", context: "record" });
+  const record = assistantSystemPrompt({ app: "Example App", context: "record" });
   assert.match(record, /Answer general questions normally/);
   assert.match(record, /open project's saved metadata/);
   assert.match(record, /Never guess a project value/);
   assert.match(record, /General advice is allowed/);
 
-  const app = assistantSystemPrompt({ app: "Metadata Editor", context: "app" });
+  const app = assistantSystemPrompt({ app: "Example App", context: "app" });
   assert.match(app, /general guidance clearly labeled/);
   assert.match(app, /have not read a project/);
   assert.match(assistantSystemPrompt({ context: "none" }), /Answer general questions normally/);

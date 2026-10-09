@@ -117,7 +117,7 @@ property  (needs a ref / el.api)   ai · onContext · onAnswer · approveTool ·
         "  chat.onAnswer = ({ text, grounding }) => log(text, grounding);",
         "<\/script>",
       ].join("\n"),
-      editor: "The Metadata Editor mounts the panel from a PHP view with three script tags and a classic ES5 fill listener. Nothing in that chain could have been built with a framework dependency.",
+      serverRendered: "A server-rendered PHP application mounts the panel from a view with three script tags and a classic ES5 event listener. Nothing in that chain could have been built with a framework dependency.",
     },
     {
       id: "lit", label: "lit 3", verdict: ["wrap", "The only upgrade worth taking — later"],
@@ -146,7 +146,7 @@ property  (needs a ref / el.api)   ai · onContext · onAnswer · approveTool ·
         "  render() { return html`<div part=\"log\">${this.turns.map(t => html`<div part=\"bubble\">${t}</div>`)}</div>`; }",
         "}",
       ].join("\n"),
-      editor: "Nothing in the editor would change — that is the point of lit. Take this step when the *component* is hard to maintain, not when a reviewer asks why there is no framework.",
+      serverRendered: "Nothing in a server-rendered host would change — that is the point of lit. Take this step when the *component* is hard to maintain, not when a reviewer asks why there is no framework.",
     },
     {
       id: "stencil", label: "Stencil", verdict: ["wrap", "Only if you must ship wrappers for others"],
@@ -172,7 +172,7 @@ property  (needs a ref / el.api)   ai · onContext · onAnswer · approveTool ·
         "}",
         "// stencil.config.ts outputTargets: dist, dist-custom-elements, dist-react, dist-vue",
       ].join("\n"),
-      editor: "Justified when you are publishing a component library for hosts you do not control and they demand idiomatic packages. Two known hosts does not meet that bar.",
+      serverRendered: "Justified when you are publishing a component library for hosts you do not control and they demand idiomatic packages. Two known hosts does not meet that bar.",
     },
     {
       id: "react", label: "React", verdict: ["no", "Never the widget. A wrapper: yes, ten lines."],
@@ -201,7 +201,7 @@ property  (needs a ref / el.api)   ai · onContext · onAnswer · approveTool ·
         "  return <pslm-chat ref={ref} {...attrs} />;",
         "}",
       ].join("\n"),
-      editor: "The editor is Vue 2. A React implementation could not be mounted here at all without pulling React into a Vuetify app — which is the argument, settled.",
+      serverRendered: "A server-rendered host on Vue 2 could not mount a React implementation without pulling React into a Vuetify app — which is the argument, settled.",
     },
     {
       id: "vue", label: "Vue 3 / Vue 2", verdict: ["no", "Never the widget. A wrapper: yes, ten lines."],
@@ -213,7 +213,7 @@ property  (needs a ref / el.api)   ai · onContext · onAnswer · approveTool ·
         "Vue binds unknown properties more readily than React does, so the wrapper is shorter.",
       ],
       costs: [
-        "Written as the widget, it inherits a version problem: this host is Vue 2 with Vuetify, so a Vue 3 component would not load here, and a Vue 2 component would date the widget.",
+        "Written as the widget, it inherits a version problem: a Vue 2 host with Vuetify, so a Vue 3 component would not load here, and a Vue 2 component would date the widget.",
         "A framework runtime inside a component that is currently one auditable file.",
         "Custom events on a custom element need explicit listeners in Vue 2 templates; the v-model sugar does not know them.",
       ],
@@ -227,7 +227,7 @@ property  (needs a ref / el.api)   ai · onContext · onAnswer · approveTool ·
         "<\/script>",
         "<template><pslm-chat ref=\"el\" model=\"lfm2.5-350m-q4km\" @pslm-answer=\"onAnswer\" /></template>",
       ].join("\n"),
-      editor: "The editor already proves the better arrangement: the widget is framework-free, and the Vue app talks to it through a manifest and one CustomEvent. No wrapper was needed, because the panel is mounted by the server-rendered view.",
+      serverRendered: "The reference host already proves the better arrangement: the widget is framework-free, and its Vue app talks to it through a manifest and one CustomEvent. No wrapper was needed, because the panel is mounted by the server-rendered view.",
     },
     {
       id: "svelte", label: "Svelte 5", verdict: ["no", "Never the widget. A wrapper: fine."],
@@ -252,7 +252,7 @@ property  (needs a ref / el.api)   ai · onContext · onAnswer · approveTool ·
         "<\/script>",
         "<svelte:element this=\"pslm-chat\" bind:this={el} model=\"lfm2.5-350m-q4km\" on:pslm-answer={handle} />",
       ].join("\n"),
-      editor: "No host in this project uses Svelte. Listed because it is the option a team proposes on runtime-size grounds — and size is measured in the Measure tab, not asserted.",
+      serverRendered: "No host in this project uses Svelte. Listed because it is the option a team proposes on runtime-size grounds — and size is measured in the Measure tab, not asserted.",
     },
     {
       id: "measure", label: "Measure", verdict: ["keep", "Do this before quoting a number"],
@@ -277,7 +277,7 @@ property  (needs a ref / el.api)   ai · onContext · onAnswer · approveTool ·
         "# then measure the thing you are replacing:",
         "gzip -c ../portable-slm/dist/chat.js | wc -c",
       ].join("\n"),
-      editor: "The two numbers that actually decide it are already known: the widget's own bundle versus the widget's bundle plus a framework, and the model bytes (~150–230 MB) that dominate every download on this page by three orders of magnitude.",
+      serverRendered: "The two numbers that actually decide it are already known: the widget's own bundle versus the widget's bundle plus a framework, and the model bytes (~150–230 MB) that dominate every download on this page by three orders of magnitude.",
     },
   ];
 
@@ -325,7 +325,7 @@ property  (needs a ref / el.api)   ai · onContext · onAnswer · approveTool ·
 
     const note = document.createElement("p");
     note.className = `note ${option.id === "vanilla" ? "" : "warn"}`;
-    note.textContent = `In the Metadata Editor: ${option.editor}`;
+    note.textContent = `In a server-rendered host: ${option.serverRendered}`;
     pane.append(note);
     pane.setAttribute("aria-labelledby", `tab-${option.id}`);
   }

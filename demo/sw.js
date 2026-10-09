@@ -32,7 +32,7 @@ self.addEventListener("message", (event) => {
 self.addEventListener("fetch", (event) => {
   const { request } = event;
   const url = new URL(request.url);
-  // Never intercept authenticated NADA / Metadata Editor API responses.
+  // Never intercept authenticated host API responses: the assistant's context reads must reach the network.
   if (request.method !== "GET" || url.origin !== location.origin || /\/(?:index\.php\/)?api\//.test(url.pathname)) return;
   event.respondWith(
     caches.match(request, { ignoreSearch: true, ignoreVary: true }).then(

@@ -21,7 +21,7 @@ const OUTPUT_FORMAT = {
   },
 };
 
-export function reviewMessages(source, snapshot, task = SUGGEST_FIELD_TASK) {
+export function suggestMessages(source, snapshot, task = SUGGEST_FIELD_TASK) {
   const tasks = [SUGGEST_FIELD_TASK, SUGGEST_DATAFILE_TASK];
   if (!tasks.includes(task)) {
     throw new Error(`Unsupported task "${task}" — this helper runs ${tasks.join(", ")} (this build offers: ${TASKS.join(", ")})`);
@@ -63,7 +63,7 @@ function finish(suggestion, reason) {
  * labeled prose. Bare unlabelled text stays rejected — an error string or stray sentence must not
  * become a fillable draft.
  */
-export function parseReview(text) {
+export function parseSuggestion(text) {
   const stripped = text.trim().replace(/^```(?:json)?\s*|\s*```$/g, "");
   try {
     const obj = JSON.parse(stripped);
@@ -82,7 +82,7 @@ export function parseReview(text) {
  * fetches or writes records. `formatValid` means JSON shape passed checks, not factual correctness.
  */
 export async function suggestMetadata(ai, { task = SUGGEST_FIELD_TASK, source, snapshot, modelId = "lfm2.5-350m-q4km", signal } = {}) {
-  const messages = reviewMessages(source, snapshot, task);
+  const messages = suggestMessages(source, snapshot, task);
   await ai.load(modelId);
   const result = await ai.generate(messages, {
     maxTokens: task === SUGGEST_DATAFILE_TASK ? 256 : 192,
@@ -91,7 +91,7 @@ export async function suggestMetadata(ai, { task = SUGGEST_FIELD_TASK, source, s
     response_format: OUTPUT_FORMAT,
   });
   try {
-    return { task, source, modelId, engine: result.engine, formatValid: true, ...parseReview(result.text) };
+    return { task, source, modelId, engine: result.engine, formatValid: true, ...parseSuggestion(result.text) };
   } catch (err) {
     return { task, source, modelId, engine: result.engine, formatValid: false, error: err.message, raw: result.text.slice(0, 1000) };
   }
