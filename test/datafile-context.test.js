@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { fetchDatafileContext } from "../integrations/datafile-context.js";
-import { mountMode, validateManifest, HOST_API_VERSION } from "../integrations/host-contract.js";
+import { fetchCredentials, mountMode, validateManifest, HOST_API_VERSION } from "../integrations/host-contract.js";
 
 const source = () => ({
   url: "/index.php/api/datafiles/assistant_context/{id}/{file_id}?offset={offset}&limit={limit}",
@@ -92,4 +92,16 @@ test("declared limits outside contract bounds fail loudly", async () => {
     fetchDatafileContext({ source: { ...source(), maxVariables: 5000 }, recordId: "11", fileId: "F1", fetch: async () => page(0, [], 0) }),
     /Invalid datafile context limits/,
   );
+});
+
+test("a datafile context read sends the credentials the host declared", async () => {
+  // Same bug class as the other context reads: the declaration was validated and then ignored, so a public
+  // document was read with the user's cookies.
+  const calls = [];
+  const request = async (url, init) => { calls.push({ url: String(url), credentials: init?.credentials }); return page(0, rows(0, 1), 1); };
+  const source = { url: "/api/files/{id}/{file_id}", pageSize: 1, maxBytes: 4096 };
+  await fetchDatafileContext({ source, recordId: "1", fileId: "F1", credentials: fetchCredentials({ context: { credentials: "none" } }), fetch: request, origin: "https://app.example" });
+  assert.equal(calls[0].credentials, "omit");
+  await fetchDatafileContext({ source, recordId: "1", fileId: "F1", fetch: request, origin: "https://app.example" });
+  assert.equal(calls[1].credentials, "same-origin", "the page's own session is still the default");
 });

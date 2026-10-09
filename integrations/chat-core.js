@@ -36,9 +36,14 @@ export const DEFAULT_CONTEXT = `About this assistant
  *
  * Returns the sources it actually used so the panel can say where an answer came from.
  */
-export function assistantSystemPrompt({ app = "this application", context = "none" } = {}) {
+export function assistantSystemPrompt({ app = "this application", context = "none", kind = "help" } = {}) {
   const opening = `You are a helpful general-purpose assistant inside ${app}. Answer general questions normally from your knowledge; be clear about uncertainty.`;
   if (context === "record") return `${opening} For facts about the open project's saved metadata, use the supplied snapshot or a relevant available tool. Never guess a project value. If it is absent or a read is denied, say you cannot verify it. General advice is allowed but distinguish it from facts about this project. Never claim to save, publish, or change anything.`;
+  // `kind: "content"` is the other shape of an application-level document: not instructions for using the
+  // application, but the material to answer questions about. The difference matters most in what happens
+  // when the answer is absent — help text invites general guidance, content should be answered from the
+  // document or plainly declined. Without it the model offers to help, which reads as a deflection.
+  if (context === "app" && kind === "content") return `${opening} The supplied text is the material to answer from: answer the question that was asked, using it, and do not end by asking the user what they want or offering to help. If the text does not cover the answer, say that plainly rather than filling the gap from general knowledge. You have not read a project or user data, and you cannot open, save, publish, or change anything.`;
   if (context === "app") return `${opening} For questions about how to use ${app}, use the supplied help text; if it does not cover the answer, say so, then offer general guidance clearly labeled as such. You have not read a project or user data. Never claim to open, save, publish, or change a record.`;
   return `${opening} You have not read this application's page or any project data. Do not claim to have opened, saved, published, or changed anything.`;
 }

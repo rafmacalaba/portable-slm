@@ -227,3 +227,17 @@ test("fitToolResult reports an unfittable result instead of returning something 
   const fitted = fitToolResult({ view: "project", page: { datafile: { description: "x".repeat(2000) } } }, 512);
   assert.match(fitted.error, /too large/);
 });
+
+test("context.app.kind is validated, so a typo fails the mount rather than the instruction", () => {
+  const withKind = (kind) => ({
+    apiVersion: HOST_API_VERSION,
+    app: { name: "App", version: "1.0.0" },
+    context: { app: { url: "app.md", kind }, credentials: "none" },
+    tasks: ["pslm.chat"],
+    writeBack: false,
+  });
+  assert.equal(validateManifest(withKind("content")).context.app.kind, "content");
+  assert.equal(validateManifest(withKind("help")).context.app.kind, "help");
+  assert.equal(validateManifest(withKind(undefined)).context.app.kind, undefined);
+  assert.throws(() => validateManifest(withKind("docs")), /context\.app\.kind must be/);
+});

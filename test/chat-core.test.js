@@ -191,3 +191,17 @@ test("decoration is stripped only in pairs, because fields hold data not markup"
   assert.equal(stripDecorativeMarkdown("2 * 3 * 4 and half ** open"), "2 * 3 * 4 and half ** open");
   assert.equal(stripDecorativeMarkdown(""), "");
 });
+
+test("an app document declared as content gets an instruction to answer, not to offer help", () => {
+  // The observed deflection — "Let me know what you'd like to do!" — is the help-text instruction being
+  // followed: it says to fall back to general guidance when the text does not cover the answer.
+  const help = assistantSystemPrompt({ app: "My Site", context: "app", kind: "help" });
+  const content = assistantSystemPrompt({ app: "My Site", context: "app", kind: "content" });
+  assert.match(help, /offer general guidance/);
+  assert.match(content, /answer the question that was asked/);
+  assert.match(content, /do not end by asking the user what they want or offering to help/);
+  assert.match(content, /say that plainly rather than filling the gap from general knowledge/);
+  assert.doesNotMatch(content, /offer general guidance/);
+  // The default stays the help-text wording: a manifest that says nothing keeps its current behaviour.
+  assert.equal(assistantSystemPrompt({ app: "My Site", context: "app" }), help);
+});

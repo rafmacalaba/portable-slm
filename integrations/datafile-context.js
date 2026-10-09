@@ -1,4 +1,4 @@
-import { expand } from "./host-contract.js";
+import { expand, fetchCredentials } from "./host-contract.js";
 
 function safeText(value, max = 500) {
   return typeof value === "string" ? value.slice(0, max) : "";
@@ -32,8 +32,10 @@ function safeVariable(row) {
 const byteLength = (value) => new TextEncoder().encode(JSON.stringify(value)).length;
 
 /** Read only allowlisted, compact metadata for one host-selected datafile; never includes file paths or rows. */
-export async function fetchDatafileContext({ source, recordId, fileId, fetch: request = globalThis.fetch,
-  origin = globalThis.location?.origin ?? "http://localhost" } = {}) {
+// `credentials` is a fetch vocabulary value ("same-origin" | "omit"), not the manifest's word — see
+// fetchCredentials(). Callers pass the manifest through it rather than forwarding the raw declaration.
+export async function fetchDatafileContext({ source, recordId, fileId, credentials = "same-origin",
+  fetch: request = globalThis.fetch, origin = globalThis.location?.origin ?? "http://localhost" } = {}) {
   if (!source?.url || !recordId || !fileId) throw new Error("Datafile context needs declared endpoint, project id, and active file id");
   const pageSize = source.pageSize ?? 75;
   const maxVariables = source.maxVariables ?? 300;
@@ -52,7 +54,8 @@ export async function fetchDatafileContext({ source, recordId, fileId, fetch: re
     const limit = Math.min(pageSize, maxVariables - offset);
     const url = new URL(expand(source.url, { id: recordId, file_id: fileId, offset, limit }), origin);
     if (url.origin !== origin) throw new Error("context.datafile.url must be same-origin");
-    const res = await request(url.href, { credentials: "same-origin" });
+    // The host declared whether its context reads may carry the user's session; honour it here too.
+    const res = await request(url.href, { credentials });
     if (res.status === 401 || res.status === 403) throw new Error(`Datafile context: HTTP ${res.status} — sign in with access to this project`);
     if (!res.ok) throw new Error(`Datafile context: HTTP ${res.status}`);
     if (!/(?:^|;)\s*application\/json/i.test(res.headers.get("content-type") || "")) {

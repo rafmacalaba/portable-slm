@@ -56,10 +56,32 @@ answers *about the application*, never about the user's data, and the panel says
 Because a static file cannot check who is asking, that source must hold documentation and nothing
 else — see [`HOST_CONTRACT.md` §3c](HOST_CONTRACT.md#3c-context-composition-shipped-first-appended-after).
 
+Application-level text comes in two shapes, and the instruction the model gets differs:
+
+| `context.app.kind` | the document is | what the model is told |
+|---|---|---|
+| `"help"` (default) | how to *use* this application | use the help text, and if it does not cover the answer, say so then **offer general guidance** |
+| `"content"` | the material to answer questions *about* | answer the question asked from it; if it does not cover the answer, **say that plainly** rather than filling the gap, and do not end by asking the user what they want |
+
+Without this, a host whose document is content was fighting its own system prompt: the help-text
+instruction invites the fallback, and a reader who asked a question got offered help instead of an
+answer. Declare the kind; a typo fails the mount.
+
 ## The rules
 
 **The host owns its routes.** The SDK contains no endpoint paths. A host manifest or adapter says
 which endpoint supplies context; the component receives a string.
+
+**Paths in the manifest resolve against the manifest, not the page.** `"url": "app.md"` therefore works
+whether the pack is served at `/`, at `/portable-slm/`, or under a nested base — which matters the moment
+a host puts the bundle anywhere other than the root. Absolute paths are still absolute, and that is what
+your own API routes should be.
+
+**Say whether a read may carry the session.** `context.credentials` is `"same-origin"` (the default, and
+the access-control story below) or `"none"` for a document that is public and should not travel with the
+user's cookies — a marketing page's help text on an otherwise authenticated origin, for instance. It
+applies to every declared read: `context.app`, `context.record`, `context.field`, `context.datafile` and
+declared tools.
 
 **Inherit the user's authority, never bypass it.** Fetch with the session the page already has:
 
@@ -144,7 +166,8 @@ Same component, same rules, different vocabulary — that is the point.
 
 ## Checklist before shipping a provider
 
-- [ ] endpoint is the same one the host UI uses, with the user's own session
+- [ ] endpoint is the same one the host UI uses, with the user's own session (or `credentials: "none"` if the document is public)
+- [ ] `context.app.kind` matches what the document is — `"content"` for material to answer from, not `"help"
 - [ ] byte cap applied, truncation stated in the returned text
 - [ ] failure message says what to do (sign in again, open the record, check access)
 - [ ] `writeBack` stays false; nothing in the panel can mutate the record

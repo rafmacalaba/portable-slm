@@ -26,6 +26,14 @@ export function validateManifest(manifest) {
   if (!manifest.context?.record?.url && !manifest.context?.app?.url) {
     throw new Error("Manifest declares no context source; set context.record.url, context.app.url, or both");
   }
+  // What kind of thing `context.app` is. The SDK's app-mode instruction was written for help text about
+  // *using* an application, and it tells the model to fall back to general guidance; a host whose document
+  // is content to answer questions *about* was fighting its own system prompt. Declaring the kind picks the
+  // right instruction instead of making every content host argue with the default. Typos fail the mount.
+  const kind = manifest.context.app?.kind;
+  if (kind !== undefined && !["help", "content"].includes(kind)) {
+    throw new Error(`context.app.kind must be "help" or "content", got ${JSON.stringify(kind)}`);
+  }
   const credentials = manifest.context.credentials ?? "same-origin";
   if (!["same-origin", "none"].includes(credentials)) {
     throw new Error(`context.credentials must be same-origin or none, got ${credentials}`);
@@ -132,6 +140,17 @@ export function fileSubjectChanged(previous, next) {
   return Boolean(previous) && Boolean(next) && previous !== next;
 }
 
+/**
+ * Translate the manifest's credential word into the one `fetch()` accepts.
+ *
+ * The contract says `same-origin` or `none`; the Fetch API says `same-origin`, `omit` or `include`. Passing
+ * the manifest's word straight through throws in the browser — `'none' is not a valid enum value of type
+ * RequestCredentials` — so the translation lives here, once, for every declared read and tool.
+ */
+export function fetchCredentials(manifest) {
+  return manifest?.context?.credentials === "none" ? "omit" : "same-origin";
+}
+
 export function hostTools(manifest) {
   const declared = manifest?.tools;
   if (!declared) return [];
@@ -203,7 +222,7 @@ export function buildHostTools(manifest, recordId, { fetch: request = globalThis
         // serve the pack at any subpath. The origin guard is what actually constrains the reach.
         const url = new URL(expand(tool.endpoint, vars), base);
         if (url.origin !== origin) throw new Error(`tool ${tool.id} left the host origin`);
-        const res = await request(url.href, { credentials: manifest.context.credentials || "same-origin" });
+        const res = await request(url.href, { credentials: fetchCredentials(manifest) });
         if (!res.ok) throw new Error(`${tool.id}: HTTP ${res.status}`);
         return byteCap(await res.text(), tool.maxBytes).text;
       },

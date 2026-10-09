@@ -13,6 +13,9 @@ import {
   hostTools, mountMode, validateManifest,
 } from "./host-contract.js";
 import { fetchDatafileContext } from "./datafile-context.js";
+// The manifest-declared context reads live in their own DOM-free module so they can be tested without a
+// browser. Re-exported below, because host-check and the docs import them from here.
+import { contextCredentials, fetchApp, fetchField, fetchJson, fetchRecord } from "./context-read.js";
 import { MD_CSS, renderMarkdown } from "./chat.js"; // also registers <pslm-chat>, the chat surface
 import { assistantSystemPrompt } from "./chat-core.js";
 
@@ -39,19 +42,6 @@ async function readOptionalJson(url) {
 
 // Host APIs commonly redirect an expired session to the login page with HTTP 200 and HTML,
 // which would otherwise surface as a JSON parse error.
-async function fetchJson(url, label) {
-  const res = await fetch(url, { credentials: "same-origin" });
-  // Named before the content-type check, because "HTTP 401" is the actionable diagnosis and a
-  // redirect body would otherwise be reported as an expired session even in a fresh browser.
-  if (res.status === 401 || res.status === 403) {
-    throw new Error(`${label}: HTTP ${res.status} — sign in as a curator with access to this project`);
-  }
-  if (!res.ok) throw new Error(`${label}: HTTP ${res.status}`);
-  if (!/(?:^|;)\s*application\/json/i.test(res.headers.get("content-type") || "")) {
-    throw new Error(`${label}: received HTML — your host session has expired, sign in again`);
-  }
-  return res.json();
-}
 
 // Manifest lives next to the bundle by default; a host that keeps it outside the bundle
 // (e.g. mounted separately in Docker) points at it with data-manifest, and a caller may pass the
@@ -76,40 +66,8 @@ async function loadConfig(source) {
   return { here, manifest, assets, version, base };
 }
 
-async function fetchRecord(manifest, recordId, base = window.location.origin) {
-  const record = manifest.context?.record;
-  if (!record?.url) throw new Error("Manifest has no context.record.url");
-  const url = new URL(expand(record.url, { id: recordId }), base);
-  if (url.origin !== window.location.origin) throw new Error("context.record.url must be same-origin");
-  const json = await fetchJson(url.href, "Project metadata");
-  const body = json.dataset ?? json.metadata ?? json;
-  return byteCap(body, record.maxBytes || 12288);
-}
 
-async function fetchField(manifest, recordId, pointer, base = window.location.origin) {
-  const field = manifest.context?.field;
-  if (!field?.url) throw new Error("Manifest has no context.field.url");
-  const url = new URL(expand(field.url, { id: recordId, pointer }), base);
-  if (url.origin !== window.location.origin) throw new Error("context.field.url must be same-origin");
-  const data = await fetchJson(url.href, "Field request");
-  if (data.status !== "success" || !data.found) throw new Error(`Field ${pointer} was not found`);
-  return byteCap({ pointer, value: data.value }, field.maxBytes || 4096);
-}
 
-async function fetchApp(manifest, base = window.location.origin) {
-  const app = manifest.context?.app;
-  if (!app?.url) throw new Error("Manifest has no context.app.url");
-  const url = new URL(expand(app.url, {}), base);
-  if (url.origin !== window.location.origin) throw new Error("context.app.url must be same-origin");
-  const res = await fetch(url.href, { credentials: "same-origin" });
-  if (!res.ok) throw new Error(`App help: HTTP ${res.status}`);
-  // HTML here means a redirect to a login or error page; a help page should never be one, and pasting
-  // a login form into a prompt would be a very strange way to describe the application.
-  if (/text\/html/i.test(res.headers.get("content-type") || "")) {
-    throw new Error(`App help: ${url.pathname} returned HTML, expected text`);
-  }
-  return byteCap(await res.text(), app.maxBytes || 8192);
-}
 
 // The user's own project list (server-scoped to their access). Lets "what projects do I have?"
 // work on record-less pages, where no record snapshot exists.
@@ -214,7 +172,8 @@ function mount(root, { manifest, ai, version, base = window.location.origin }) {
   const datafileMode = mode.datafile;
   const datafileContext = () => {
     const fileId = state.fileId || root.dataset.dataFileId || "";
-    return fileId ? fetchDatafileContext({ source: manifest.context.datafile, recordId: root.dataset.recordId, fileId })
+    return fileId ? fetchDatafileContext({ source: manifest.context.datafile, recordId: root.dataset.recordId, fileId,
+      credentials: contextCredentials(manifest) })
       : Promise.resolve(null);
   };
   const onFileChange = () => {
@@ -367,7 +326,7 @@ function mount(root, { manifest, ai, version, base = window.location.origin }) {
   // Keep general conversation available in every mode; only claims about host-specific data are
   // bounded by the help text, saved record snapshot, and explicitly approved tools.
   const app = manifest?.app?.name || "this application";
-  chat.system = assistantSystemPrompt({ app, context: mode.context });
+  chat.system = assistantSystemPrompt({ app, context: mode.context, kind: manifest?.context?.app?.kind ?? "help" });
   // Which host source feeds the prompt, if any. With none attached, <pslm-chat> still carries
   // Portable SLM's own description and says the answer is not grounded in the user's data.
   if (mode.context === "record") {
@@ -709,7 +668,8 @@ export async function mountFromManifest(root) {
 export {
   DEFAULT_MODEL, MODELS, buildHostTools, createLocalSLM, allowsTask, byteCap, expand, hostTools,
   DECLARED_POINTERS, mountMode, validateManifest,
-  fetchApp, fetchField, fetchJson, fetchRecord, loadConfig,
+  // Re-exported from context-read.js: these were defined here until they moved somewhere testable.
+  contextCredentials, fetchApp, fetchField, fetchJson, fetchRecord, loadConfig,
 };
 
 // Auto-mount only in a browser; hosts may call mountFromManifest() themselves.
