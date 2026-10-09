@@ -28,11 +28,19 @@ export const TRANSFORMS = {
 };
 
 /** Apply a declared transform to a verified file, or return the original blob untouched. */
-export async function applyTransform(blob, file, spec, ResponseClass = Response) {
+/**
+ * Apply a declared transform to a verified file, returning a Blob either way.
+ *
+ * It returned a Response once, which the pinned cache then wrapped in another Response, so the fetched body
+ * became the literal string "[object Response]" and the ONNX tier failed to parse its own config. Nothing
+ * caught it because only the bundled tier is exercised end to end. One return type, and the caller owns the
+ * Response it is going to build.
+ */
+export async function applyTransform(blob, file, spec) {
   const declared = spec?.transforms?.[file.path];
   if (!declared) return blob;
   // A catalogue entry names a transform, so the catalogue stays data and the edit stays here.
   const transform = typeof declared === "function" ? declared : TRANSFORMS[declared];
   if (!transform) throw new Error(`Unknown transform ${JSON.stringify(declared)} declared for ${file.path}`);
-  return new ResponseClass(new Blob([transform(await blob.text())]));
+  return new Blob([transform(await blob.text())]);
 }
