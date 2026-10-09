@@ -32,10 +32,21 @@ export function starterManifest(shape, { name = "Your application", url = "https
     writeBack: false,
   };
   if (shape === "static") {
-    // A host with no API declares one document it may answer from. The path is relative to this
+    // A host with no API declares the documents it may answer from. The paths are relative to this
     // manifest, so the pack works at "/", at "/portable-slm/" or under any subpath — and
     // `credentials: "none"` because a public page has no session to send.
-    base.context = { app: { url: "app.md", maxBytes: 8192 }, credentials: "none" };
+    //
+    // Declaring a corpus is what turns retrieval on, and retrieval is the default: the assistant gets the
+    // sections that match a question instead of one document cut at the byte cap. No embedder field, because
+    // the shipped default is the bundled one, so there is nothing for a host to install or configure before
+    // it works. `context.app` stays as the document that is always in the prompt, which is the right home
+    // for "what is this application" and for the rules that keep answers honest.
+    base.context = {
+      app: { url: "app.md", maxBytes: 8192, kind: "content" },
+      documents: [{ url: "app.md", label: "app" }],
+      credentials: "none",
+    };
+    base.retrieval = { topK: 5, maxBytes: 6144 };
     return base;
   }
   // A host with an API declares the record, the one field a curator may edit, and one read tool. Every
@@ -54,6 +65,10 @@ export function starterManifest(shape, { name = "Your application", url = "https
     },
     credentials: "same-origin",
   };
+  // The same corpus default for a host with an API: its own documentation is what a "how do I fill this
+  // in" question needs, and the record snapshot below is per-record rather than per-question.
+  base.context.documents = [{ url: "app.md", label: "app" }];
+  base.retrieval = { topK: 5, maxBytes: 6144 };
   base.tasks = ["pslm.chat", "pslm.suggest-field"];
   base.tools = [{
     id: "read_record_field",
