@@ -55,7 +55,7 @@ export function createEmbedder({ assets } = {}) {
     backend = null;
   }
 
-  async function load(id = DEFAULTS.embedder, { device = "wasm" } = {}) {
+  async function load(id = DEFAULTS.embedder, { device } = {}) {
     const spec = specOf(id);
     await unload();
     if (spec.runtime === "ternlight") {
@@ -73,21 +73,26 @@ export function createEmbedder({ assets } = {}) {
       return { device: "cpu", dims: spec.dims, model: id, info: backend.info };
     }
     if (spec.runtime !== "transformers") throw new Error(`Unknown embedder runtime "${spec.runtime}"`);
+    // The pinned ONNX export needs WebGPU. Its q4f16 weights quantize the embedding gather, and ONNX Runtime
+    // Web's WASM backend has no kernel for it: on CPU the session fails with "Failed to find kernel for
+    // com.microsoft.GatherBlockQuantized". The alternative is the export's no-gather variant, which is a
+    // different pin. So WebGPU is the default and CPU is not offered as a quiet fallback that cannot work.
+    const chosen = device ?? "webgpu";
     const { AutoModel, AutoTokenizer } = await RUNTIMES.transformers();
     const { configureLocalFiles } = await import("./pinned-cache.js");
-    if (device !== "webgpu" && device !== "wasm" && device !== "cpu") throw new Error(`Unknown device "${device}"`);
+    if (chosen !== "webgpu" && chosen !== "wasm" && chosen !== "cpu") throw new Error(`Unknown device "${chosen}"`);
     const restore = configureLocalFiles(spec, assets);
     try {
       const tokenizer = await AutoTokenizer.from_pretrained(spec.repo, { revision: spec.revision });
       const model = await AutoModel.from_pretrained(spec.repo, {
         revision: spec.revision,
         dtype: spec.dtype,
-        device: device === "cpu" ? "wasm" : device,
+        device: chosen === "cpu" ? "wasm" : chosen,
         subfolder: spec.subfolder,
       });
       backend = {
         spec,
-        device,
+        device: chosen,
         tokenizer,
         model,
         embed: null,
@@ -95,11 +100,15 @@ export function createEmbedder({ assets } = {}) {
       };
     } catch (err) {
       await unload();
+      // Name the cause rather than relaying a kernel name, because the fix is a device or a different pin.
+      if (/GatherBlockQuantized/i.test(err.message)) {
+        throw new Error(`${id} needs WebGPU: its quantized embedding gather has no WASM kernel. Pass device: "webgpu", or pin the export's no-gather variant.`, { cause: err });
+      }
       throw err;
     } finally {
       restore();
     }
-    return { device, dims: spec.dims, model: id };
+    return { device: chosen, dims: spec.dims, model: id };
   }
 
   /**

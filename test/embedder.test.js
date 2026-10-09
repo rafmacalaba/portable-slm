@@ -75,3 +75,17 @@ test("chunk size and floor come from the catalogue, not from a call site", async
   assert.equal(embedder.minSimilarity(), MODELS["ternlight-base"].minSimilarity);
   assert.equal(embedder.chunkChars("embeddinggemma-2-text-q4f16"), MODELS["embeddinggemma-2-text-q4f16"].chunkChars);
 });
+
+test("the ONNX tier asks for WebGPU, because its weights have no WASM kernel", async () => {
+  // Measured: the q4f16 export fails on the WASM backend with "Failed to find kernel for
+  // com.microsoft.GatherBlockQuantized", and runs on WebGPU. A default that silently picks a backend which
+  // cannot load the model is worse than one that says so.
+  const embedder = createEmbedder({ assets: { onnxWasm: "x", onnxMjs: "y" } });
+  const spec = MODELS["embeddinggemma-2-text-q4f16"];
+  assert.equal(spec.runtime, "transformers");
+  // The device default lives in load(); assert the contract the catalogue and the docs both state.
+  assert.match(String(embedder.load), /device/);
+  const source = await import("node:fs").then((fs) => fs.readFileSync(new URL("../src/embedder.js", import.meta.url), "utf8"));
+  assert.match(source, /device \?\? "webgpu"/, "the ONNX tier must default to a backend its weights support");
+  assert.match(source, /GatherBlockQuantized/, "and must name the cause when it cannot");
+});
