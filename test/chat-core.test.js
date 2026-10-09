@@ -192,6 +192,16 @@ test("decoration is stripped only in pairs, because fields hold data not markup"
   assert.equal(stripDecorativeMarkdown(""), "");
 });
 
+test("the content instruction forbids asking the user to paste the page they are on", () => {
+  // The observed failure: asked "what is this page about", the model said it could not see the pages and
+  // asked the reader to share the text. Retrieval was feeding it link tails, and nothing told it that the
+  // application description is supplied. Both are fixed; this asserts the instruction half.
+  const content = assistantSystemPrompt({ app: "My Site", context: "app", kind: "content" });
+  assert.match(content, /never ask the user to paste content/);
+  assert.match(content, /never say you cannot see the page/);
+  assert.match(content, /About this application/);
+});
+
 test("an app document declared as content gets an instruction to answer, not to offer help", () => {
   // The observed deflection — "Let me know what you'd like to do!" — is the help-text instruction being
   // followed: it says to fall back to general guidance when the text does not cover the answer.
@@ -200,7 +210,7 @@ test("an app document declared as content gets an instruction to answer, not to 
   assert.match(help, /offer general guidance/);
   assert.match(content, /answer the question that was asked/);
   assert.match(content, /do not end by asking the user what they want or offering to help/);
-  assert.match(content, /say that plainly rather than filling the gap from general knowledge/);
+  assert.match(content, /say that plainly in one sentence rather than filling the gap from general knowledge/);
   assert.doesNotMatch(content, /offer general guidance/);
   // The default stays the help-text wording: a manifest that says nothing keeps its current behaviour.
   assert.equal(assistantSystemPrompt({ app: "My Site", context: "app" }), help);

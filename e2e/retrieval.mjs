@@ -56,7 +56,7 @@ const manifest = (withIndex, embedder) => ({
   apiVersion: "pslm-host/1",
   app: { name: "Fixture App", version: "1.0.0" },
   context: {
-    app: { url: "handbook.md", maxBytes: 8192, kind: "content" },
+    app: { url: "app.md", maxBytes: 4096, kind: "content" },
     documents: [{ url: "handbook.md", label: "Handbook" }],
     credentials: "none",
   },
@@ -112,6 +112,9 @@ for (const name of readdirSync("dist").filter((f) => f.endsWith(".js"))) {
   writeFileSync(join(FIXTURE, name), readFileSync(join("dist", name)));
 }
 writeFileSync(join(FIXTURE, "handbook.md"), CORPUS);
+// A separate, small application description: the shape a host actually uses, and the thing that answers
+// "what is this page about" without depending on ranking.
+writeFileSync(join(FIXTURE, "app.md"), "# Fixture App\n\nThis fixture demonstrates retrieval over a data handbook. It is a test host, not a real application.\n");
 writeFileSync(join(FIXTURE, "portable-slm.host.json"), JSON.stringify(manifest(true), null, 2));
 writeFileSync(join(FIXTURE, "bm25.host.json"), JSON.stringify(manifest(false), null, 2));
 writeFileSync(join(FIXTURE, "keyword.host.json"), JSON.stringify(manifest(false, "none"), null, 2));
@@ -191,7 +194,8 @@ try {
     }, question);
 
     const first = await ask("house_hold_id");
-    check(`[${label}] an identifier is retrieved and labelled`, /^### Identifiers[^\n]*\n[\s\S]*house_hold_id/.test(first.context));
+    check(`[${label}] an identifier is retrieved and labelled`, /^### Identifiers[^\n]*\n[\s\S]*house_hold_id/m.test(first.context));
+    check(`[${label}] the application description comes first, unranked`, /^## About this application/m.test(first.context));
     check(`[${label}] the context is a selection, not the document`, (first.context.match(/^### /gm) || []).length < 8);
 
     const semantic = await ask("how long before I can read it");
@@ -207,13 +211,16 @@ try {
       // The real thing: a question sharing no words with the corpus, answered by the bundled embedder, in a
       // browser, with nothing faked and nothing large downloaded.
       check(`[${label}] a paraphrase reaches the section that shares no words`, /twelve months after deposit/.test(semantic.context));
-      check(`[${label}] and does not drag in unrelated sections`, !/house_hold_id|Write to the data team/.test(semantic.context));
+      check(`[${label}] and does not drag in unrelated sections`, !/Write to the data team/.test(semantic.context));
       const runtime = fetched.filter((url) => /index\.browser-.*\.js$/.test(url));
       check(`[${label}] the embedder runtime is fetched once`, runtime.length <= 1, `${runtime.length} request(s)`);
     }
 
     const off = await ask("how do I bake sourdough bread");
-    check(`[${label}] a question the corpus does not cover yields nothing`, off.context.length === 0, `bytes=${off.context.length}`);
+    check(`[${label}] a question the corpus does not cover retrieves no sections`,
+      !/^### /m.test(off.context) || !/sourdough/i.test(off.context), `bytes=${off.context.length}`);
+    check(`[${label}] but still supplies the application description`,
+      /About this application/.test(off.context), `bytes=${off.context.length}`);
 
     check(`[${label}] no page errors`, errors.length === 0, errors.slice(0, 1).join(""));
     await page.close();

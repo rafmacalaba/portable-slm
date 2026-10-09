@@ -13,6 +13,7 @@ import {
   serializeIndex,
 } from "../src/retrieval.js";
 import { documents, fetchCredentials, retrievalOptions } from "./host-contract.js";
+import { fetchApp } from "./context-read.js";
 
 /** One corpus document larger than this is refused: a corpus is indexed, not pasted, so a huge file is a mistake. */
 export const MAX_DOCUMENT_BYTES = 2 * 1024 * 1024;
@@ -102,7 +103,11 @@ export async function buildCorpusIndex({ manifest, base, fetch: request = global
   const { dims, chunks: chunkChars, minSimilarity } = indexParams(modelId, options);
   const corpusVersion = options.corpusVersion ?? "0";
   const corpus = await fetchCorpus(manifest, base, { fetch: request });
-  const chunks = corpusChunks(corpus, { targetChars: chunkChars });
+  // The application document is already always in the prompt, so indexing it would supply it twice and let
+  // its own sections outrank the description it exists to provide.
+  const appUrl = manifest.context?.app?.url;
+  const indexed = appUrl ? corpus.filter((doc) => doc.path !== appUrl) : corpus;
+  const chunks = corpusChunks(indexed, { targetChars: chunkChars });
   if (!chunks.length) return { index: null, upgrade: null, options, dims, chunkChars, minSimilarity, chunkerVersion: CHUNKER_VERSION };
 
   // A prebuilt index is tried first: it needs no embedder, no download and no waiting.
@@ -188,6 +193,29 @@ export function createRetrievalContext({ manifest, base, fetch: request = global
   if (!tier) embedder = null;
   const state = { index: null, dims: DEFAULTS.retrieval.dims, options: {}, source: "starting", minSimilarity: 0 };
   let pending = null;
+  let appBlock;
+
+  /**
+   * What this application is, fetched once and always placed ahead of the ranked sections.
+   *
+   * Ranked retrieval answers questions about the corpus, and questions about the application itself are not
+   * corpus questions: "what is this page about" has no distinctive term to match, so ranking alone returns
+   * whatever shares a common word. The app document is short and it is the one thing that must not depend on
+   * ranking, which is what rung 1 of the context ladder has always said.
+   */
+  async function aboutThisApplication() {
+    if (appBlock !== undefined) return appBlock;
+    if (!manifest.context?.app?.url) { appBlock = ""; return appBlock; }
+    try {
+      const app = await fetchApp(manifest, base);
+      appBlock = `## About this application\n\n${app.text}${app.truncated ? "\n… truncated to fit the byte cap" : ""}`;
+    } catch (err) {
+      // The corpus may still answer, so this is not fatal, but the caller should hear about it.
+      onStatus(`application description unavailable: ${err.message}`, "warn");
+      appBlock = "";
+    }
+    return appBlock;
+  }
 
   /**
    * Load the embedder for the query half, without re-embedding the corpus.
@@ -264,13 +292,16 @@ export function createRetrievalContext({ manifest, base, fetch: request = global
           onStatus(`query embedding failed, answering from keywords: ${err.message}`, "warn");
         }
       }
+      const about = await aboutThisApplication();
       const ranked = rankChunks(state.index, question, {
         k: state.options.topK ?? DEFAULTS.retrieval.topK,
         alpha: state.options.alpha ?? DEFAULTS.retrieval.alpha,
         queryVector,
         minSimilarity: state.minSimilarity,
       });
-      if (!ranked.length) return "";
+      // Nothing retrieved is not nothing to answer from: the application description is still supplied, and
+      // the model is told to say so when it does not cover the question.
+      if (!ranked.length) return about;
       const { text, omitted, truncated } = selectUnderCap(ranked, {
         maxBytes: state.options.maxBytes ?? DEFAULTS.retrieval.maxBytes,
       });
@@ -278,7 +309,9 @@ export function createRetrievalContext({ manifest, base, fetch: request = global
       if (omitted.length) notes.push(`${omitted.length} further matching section(s) did not fit`);
       if (truncated) notes.push("the last section was cut to fit");
       if (state.source === "bm25") notes.push("keyword search only: the embedder is not installed on this device");
-      return notes.length ? `${text}\n\n[${notes.join("; ")}.]` : text;
+      const tail = notes.length ? `[${notes.join("; ")}.]` : "";
+      const sections = [text, tail].filter(Boolean).join("\n\n");
+      return [about, sections].filter(Boolean).join("\n\n");
     },
   };
 }
