@@ -19,6 +19,9 @@
     "./retrieval": {
       "default": "./src/retrieval.js"
     },
+    "./embedder": {
+      "default": "./src/embedder.js"
+    },
     "./field-suggest": {
       "types": "./integrations/field-suggest.d.ts",
       "default": "./integrations/field-suggest.js"

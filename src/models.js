@@ -106,7 +106,11 @@ MODELS["embeddinggemma-2-text-q4f16"] = {
   runtime: "transformers", format: "ONNX",
   repo: "onnx-community/embeddinggemma-2-ONNX", revision: EMBEDDINGGEMMA2_REV,
   dtype: "q4f16", subfolder: "onnx",
-  dims: 768, mrl: [768, 512, 256, 128], ctx: 8192, pooling: "mean",
+  dims: 768, mrl: [768, 512, 256, 128], ctx: 8192, output: "sentence_embedding",
+  // The export declares vision_config and audio_config, and transformers.js opens a session for every
+  // modality a config declares. Without this, a "text only" install fetches 93 MB of vision and 162 MB
+  // of audio weights. The transform runs on the hash-verified upstream bytes.
+  transforms: { "config.json": "text-only" },
   license: "Apache-2.0",
   verified: "Pinned from the Hub tree API; the 495 KB graph hash was recomputed locally and matched",
   files: onnxFiles("onnx-community/embeddinggemma-2-ONNX", EMBEDDINGGEMMA2_REV, [

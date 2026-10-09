@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
-  allowsTask, buildHostTools, byteCap, expand, fileSubjectChanged, fitToolResult, hostTools, mountMode, TASKS,
-  validateManifest, HOST_API_VERSION,
+  allowsTask, buildHostTools, byteCap, documents, expand, fileSubjectChanged, fitToolResult, hostTools,
+  mountMode, retrievalOptions, TASKS, validateManifest, HOST_API_VERSION,
 } from "../integrations/host-contract.js";
 
 const manifest = () => ({
@@ -240,4 +240,45 @@ test("context.app.kind is validated, so a typo fails the mount rather than the i
   assert.equal(validateManifest(withKind("help")).context.app.kind, "help");
   assert.equal(validateManifest(withKind(undefined)).context.app.kind, undefined);
   assert.throws(() => validateManifest(withKind("docs")), /context\.app\.kind must be/);
+});
+
+test("a corpus is same-origin, and a bare string and an object mean the same thing", () => {
+  const base = { apiVersion: HOST_API_VERSION, app: { name: "App", version: "1.0.0" }, context: { app: { url: "app.md" } }, writeBack: false };
+  assert.deepEqual(documents(base), [], "no documents means no retrieval, not an error");
+  const declared = documents({ ...base, context: { ...base.context, documents: ["/a.md", { url: "/b.md", label: "Handbook" }] } });
+  assert.deepEqual(declared, [{ url: "/a.md", label: "/a.md" }, { url: "/b.md", label: "Handbook" }]);
+  assert.throws(() => documents({ ...base, context: { ...base.context, documents: "a.md" } }), /must be an array/);
+  assert.throws(() => documents({ ...base, context: { ...base.context, documents: [{ label: "no url" }] } }), /needs a url/);
+  assert.throws(
+    () => documents({ ...base, context: { ...base.context, documents: ["https://example.com/manual.md"] } }),
+    /must be same-origin/,
+    "another origin is refused at mount, not at fetch",
+  );
+});
+
+test("retrieval options are validated, and a bad value is refused rather than clamped", () => {
+  const base = { apiVersion: HOST_API_VERSION, app: { name: "App", version: "1.0.0" }, context: { app: { url: "app.md" } }, writeBack: false };
+  assert.deepEqual(retrievalOptions(base), {}, "retrieval is optional");
+  const ok = retrievalOptions({ ...base, retrieval: { index: "/pslm.index.json", corpusVersion: " 2026-10-09 ", dims: 256, alpha: 0.5, topK: 6, maxBytes: 8192 } });
+  assert.deepEqual(ok, { index: "/pslm.index.json", dims: 256, alpha: 0.5, topK: 6, maxBytes: 8192, corpusVersion: "2026-10-09" });
+  assert.throws(() => retrievalOptions({ ...base, retrieval: { dims: 300.5 } }), /positive integer/);
+  assert.throws(() => retrievalOptions({ ...base, retrieval: { dims: 0 } }), /positive integer/);
+  assert.throws(() => retrievalOptions({ ...base, retrieval: { alpha: 1.5 } }), /between 0 and 1/);
+  assert.throws(() => retrievalOptions({ ...base, retrieval: { alpha: "0.5" } }), /between 0 and 1/);
+  assert.throws(() => retrievalOptions({ ...base, retrieval: { index: "pslm.index.json" } }), /starting with \//);
+  assert.throws(() => retrievalOptions({ ...base, retrieval: { corpusVersion: "  " } }), /non-empty string/);
+  assert.throws(() => retrievalOptions({ ...base, retrieval: { chunkSize: 500 } }), /Unknown retrieval key/);
+});
+
+test("validateManifest refuses a bad corpus or retrieval block at mount", () => {
+  const withRetrieval = (retrieval, docs) => ({
+    apiVersion: HOST_API_VERSION,
+    app: { name: "App", version: "1.0.0" },
+    context: { app: { url: "app.md" }, ...(docs ? { documents: docs } : {}) },
+    ...(retrieval ? { retrieval } : {}),
+    writeBack: false,
+  });
+  assert.ok(validateManifest(withRetrieval({ dims: 256 }, ["/a.md"])));
+  assert.throws(() => validateManifest(withRetrieval({ alpha: 2 })), /between 0 and 1/);
+  assert.throws(() => validateManifest(withRetrieval(undefined, ["//cdn.example.com/a.md"])), /must be same-origin/);
 });

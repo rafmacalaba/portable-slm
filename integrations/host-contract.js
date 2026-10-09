@@ -50,7 +50,77 @@ export function validateManifest(manifest) {
   }
   // Same reasoning for declared tools: validate them at mount, not when the model asks.
   hostTools(manifest);
+  // Retrieval is validated at mount for the same reason a tool is: a typo that silently disables it looks
+  // exactly like a corpus that answers badly, and the difference is only visible in the prompt.
+  documents(manifest);
+  retrievalOptions(manifest);
   return manifest;
+}
+
+/**
+ * The corpus a host offers for retrieval. Same-origin paths, because the assistant has no business
+ * reading another origin, and the same rule the context readers already enforce.
+ */
+export function documents(manifest) {
+  const declared = manifest?.context?.documents;
+  if (declared === undefined) return [];
+  if (!Array.isArray(declared)) throw new Error("context.documents must be an array of paths or {url, label} objects");
+  return declared.map((entry, index) => {
+    const url = typeof entry === "string" ? entry : entry?.url;
+    if (typeof url !== "string" || !url.trim()) {
+      throw new Error(`context.documents[${index}] needs a url`);
+    }
+    // A path cannot carry a scheme, and a protocol-relative `//host/path` is cross-origin too, so both
+    // are refused at mount. Missing the second form is how a same-origin guard quietly stops being one.
+    if (/^(?:[a-z][a-z0-9+.-]*:|\/\/)/i.test(url)) {
+      throw new Error(`context.documents[${index}] must be same-origin: got ${url}`);
+    }
+    return { url: url.trim(), label: (typeof entry === "object" && entry?.label) || url.trim() };
+  });
+}
+
+const RETRIEVAL_KEYS = new Set(["index", "corpusVersion", "dims", "alpha", "topK", "maxBytes"]);
+
+/**
+ * Retrieval settings, with every out-of-range value refused rather than clamped. A host that asks for
+ * `dims: 300` has misunderstood Matryoshka, and quietly giving it 256 would hide that.
+ */
+export function retrievalOptions(manifest) {
+  const declared = manifest?.retrieval;
+  if (declared === undefined) return {};
+  if (!declared || typeof declared !== "object") throw new Error("retrieval must be an object");
+  for (const key of Object.keys(declared)) {
+    if (!RETRIEVAL_KEYS.has(key)) throw new Error(`Unknown retrieval key "${key}"; known: ${[...RETRIEVAL_KEYS].join(", ")}`);
+  }
+  const out = {};
+  if (declared.index !== undefined) {
+    if (typeof declared.index !== "string" || !declared.index.startsWith("/")) {
+      throw new Error("retrieval.index must be a path starting with / (same-origin)");
+    }
+    out.index = declared.index;
+  }
+  if (declared.dims !== undefined) {
+    if (!Number.isInteger(declared.dims) || declared.dims < 1) throw new Error("retrieval.dims must be a positive integer");
+    out.dims = declared.dims;
+  }
+  if (declared.alpha !== undefined) {
+    if (typeof declared.alpha !== "number" || !(declared.alpha >= 0 && declared.alpha <= 1)) {
+      throw new Error("retrieval.alpha must be a number between 0 and 1");
+    }
+    out.alpha = declared.alpha;
+  }
+  for (const key of ["topK", "maxBytes"]) {
+    if (declared[key] === undefined) continue;
+    if (!Number.isInteger(declared[key]) || declared[key] < 1) throw new Error(`retrieval.${key} must be a positive integer`);
+    out[key] = declared[key];
+  }
+  if (declared.corpusVersion !== undefined) {
+    if (typeof declared.corpusVersion !== "string" || !declared.corpusVersion.trim()) {
+      throw new Error("retrieval.corpusVersion must be a non-empty string");
+    }
+    out.corpusVersion = declared.corpusVersion.trim();
+  }
+  return out;
 }
 
 // Only {id} and {pointer} are substituted. An unlisted placeholder stays literal, so a

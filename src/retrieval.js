@@ -154,6 +154,19 @@ export function cosine(a, b) {
   return dot;
 }
 
+/**
+ * Matryoshka truncation: keep the first `dims` values and re-normalize.
+ *
+ * EmbeddingGemma is trained so that a prefix of the vector is a usable vector, so this is the intended
+ * use rather than a lossy shortcut. Re-normalizing matters: cosine over un-renormalized prefixes is not
+ * a cosine, and the error is small enough to look like a quality difference instead of a bug.
+ */
+export function matryoshka(vector, dims = vector.length) {
+  const take = Math.max(1, Math.min(dims, vector.length));
+  const out = Float32Array.from(vector.subarray ? vector.subarray(0, take) : vector.slice(0, take));
+  return normalize(out);
+}
+
 /** L2-normalize in place, so a dot product is a cosine. */
 export function normalize(vector) {
   let sum = 0;

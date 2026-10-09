@@ -4,7 +4,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   CHUNKER_VERSION, buildIndex, bm25, chunkText, cosine, decodeVector, deserializeIndex, encodeVector,
-  indexKey, normalize, rankChunks, selectUnderCap, serializeIndex, tokenize,
+  indexKey, matryoshka, normalize, rankChunks, selectUnderCap, serializeIndex, tokenize,
 } from "../src/retrieval.js";
 
 const DOC = `# Study handbook
@@ -168,4 +168,25 @@ test("cosine is a dot product on normalized vectors and safe on a mismatch", () 
   assert.ok(Math.abs(cosine(a, b) - 1) < 1e-6);
   assert.equal(cosine(a, Float32Array.from([1, 2, 3])), 0);
   assert.equal(cosine(null, a), 0);
+});
+
+test("matryoshka truncates and re-normalizes, and a prefix is usable on its own", () => {
+  const full = normalize(Float32Array.from([3, 4, 0, 0]));
+  const cut = matryoshka(full, 2);
+  assert.equal(cut.length, 2);
+  assert.ok(Math.abs(Math.sqrt(cut.reduce((s, v) => s + v * v, 0)) - 1) < 1e-6, "a truncated vector must stay unit length");
+  const keepLength = Math.hypot(full[0], full[1]);
+  assert.ok(Math.abs(cut[0] - full[0] / keepLength) < 1e-6, "the kept values are the leading ones, rescaled");
+  // Asking for more than exists cannot invent values.
+  assert.equal(matryoshka(full, 99).length, 4);
+  assert.ok(Math.abs(matryoshka(full, 99).reduce((s, v) => s + v * v, 0) - 1) < 1e-6);
+  // An un-renormalized prefix is not a cosine, and the gap is small enough to be mistaken for a
+  // quality difference. Use a vector whose prefix is genuinely shorter than unit length.
+  const spread = normalize(Float32Array.from([1, 1, 1, 1]));
+  const prefix = spread.slice(0, 2);
+  assert.ok(Math.abs(Math.hypot(prefix[0], prefix[1]) - 1) > 0.2, "this case must need renormalizing to be a real test");
+  const fixed = matryoshka(spread, 2);
+  assert.ok(Math.abs(Math.hypot(fixed[0], fixed[1]) - 1) < 1e-6);
+  const other = normalize(Float32Array.from([1, 0, 0, 0]));
+  assert.notEqual(cosine(prefix, matryoshka(other, 2)), cosine(fixed, matryoshka(other, 2)));
 });

@@ -137,9 +137,29 @@ matters.
 
 ## What is and is not built today
 
-Built and tested: the chunker, BM25, the hybrid ranker, the cap, the index format, the cache key, and the
-pinned embedder entry (`src/retrieval.js`, `test/retrieval.test.js`).
+**Built and tested:** the chunker, BM25, the hybrid ranker, the cap, the index format and its cache key
+(`src/retrieval.js`); the embedder runtime (`src/embedder.js`); the text-only transform that keeps the
+install to the text encoder (`src/transforms.js`, with the reason in the code); the pinned catalogue entry;
+and the manifest validation for `context.documents` and `retrieval`, so a typo or a cross-origin path fails
+the mount. 24 tests across `test/retrieval.test.js` and `test/transforms.test.js`.
 
-Not yet wired: the feature-extraction runtime path (`src/embedder.js`), the manifest keys above, and the
-default `onContext` that uses them. Until that lands, a host can use `retrieval.js` directly at rung 4,
-and `docs/STATUS.md` records the gap rather than implying otherwise.
+**Verified by running it, not by reading it.** The pinned file set was installed and the model was loaded
+with only those files present, in Node, against the real weights:
+
+```
+loaded with ONLY the 6 pinned files, in 0.5 s
+sentence_embedding dims: [4, 768], float32, norm 1.000000 (already normalized)
+cosine query -> "embargo is released after twelve months"   (paraphrase)   0.8718
+cosine query -> "stored as house_hold_id"                   (identifier)   0.6291
+cosine query -> "write to the data team"                    (unrelated)    0.6514
+same paraphrase at 256 dims (Matryoshka)                                   0.8958
+```
+
+Two things worth reading off that. Truncating to 256 dimensions *improved* the paraphrase match, which is
+Matryoshka doing what it claims. And the identifier scored **below** the unrelated sentence: embeddings
+alone would rank a question about `house_hold_id` wrong, which is the measured case for BM25 being in the
+default mix rather than replaced by it.
+
+**Not yet wired:** the corpus fetcher, the index cache keyed by `indexKey`, and the default `onContext` in
+`integrations/embed.js` that ties them to a question. Until that lands, a host can use `retrieval.js` and
+`embedder.js` directly at rung 4, and `docs/STATUS.md` records the gap rather than implying otherwise.
