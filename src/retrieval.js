@@ -229,7 +229,7 @@ function scale(scores) {
  * a zero vector would otherwise make every chunk look equally distant and depress the BM25 signal it
  * is added to.
  */
-export function rankChunks(index, question, { k = RETRIEVAL_DEFAULTS.topK, alpha = RETRIEVAL_DEFAULTS.alpha, queryVector } = {}) {
+export function rankChunks(index, question, { k = RETRIEVAL_DEFAULTS.topK, alpha = RETRIEVAL_DEFAULTS.alpha, queryVector, minSimilarity = 0 } = {}) {
   const chunks = index?.chunks ?? [];
   if (!chunks.length) return [];
   const lexical = new Map(bm25(chunks, question, { k: chunks.length }).map((entry) => [entry.index, entry.score]));
@@ -241,6 +241,16 @@ export function rankChunks(index, question, { k = RETRIEVAL_DEFAULTS.topK, alpha
       if (at + index.dims > vectors.length) break;
       semantic.set(chunk.index, cosine(queryVector, vectors.subarray(at, at + index.dims)));
     }
+  }
+  // A vector match is a candidate for every chunk, so without a floor a question the corpus does not
+  // cover still returns its least-bad section, and a section claim is exactly what invites the model to
+  // reason over the wrong material. The floor applies only to chunks that no query term matched: a chunk
+  // found by a distinctive term is evidence in its own right. It is per model because the similarity
+  // scales are not comparable: the best out-of-corpus match measured 0.046 for one embedder and 0.574
+  // for the other, so a shared constant would be wrong for at least one of them.
+  const floor = Number.isFinite(minSimilarity) ? minSimilarity : 0;
+  for (const [chunkIndex, similarity] of semantic) {
+    if (similarity < floor && !(lexical.get(chunkIndex) > 0)) semantic.delete(chunkIndex);
   }
   const hasSemantic = semantic.size > 0;
   const weight = hasSemantic ? clamp(alpha, 0, 1) : 0;
@@ -311,13 +321,13 @@ export function selectUnderCap(ranked, { maxBytes = RETRIEVAL_DEFAULTS.maxBytes 
  * a 768-dim index answering a 256-dim query, or a corpus that has moved on, produces confident
  * nonsense with no error anywhere, which is the failure mode this key exists to make impossible.
  */
-export function indexKey({ corpusVersion = "0", embedderId = "bm25", dims = 0, chunkerVersion = CHUNKER_VERSION } = {}) {
-  return `pslm-index/v1/${corpusVersion}/${embedderId}/${dims}/${chunkerVersion}`;
+export function indexKey({ corpusVersion = "0", embedderId = "bm25", dims = 0, chunkerVersion = CHUNKER_VERSION, chunkChars = 0 } = {}) {
+  return `pslm-index/v1/${corpusVersion}/${embedderId}/${dims}/${chunkerVersion}/${chunkChars}`;
 }
 
 /** Build the in-memory index `rankChunks` reads. Vectors are flat: chunk i occupies [i*dims, (i+1)*dims). */
-export function buildIndex({ chunks, vectors = null, dims = 0, embedderId = "bm25", corpusVersion = "0" }) {
-  return { chunks, vectors: vectors ? Float32Array.from(vectors) : null, dims, embedderId, corpusVersion, key: indexKey({ corpusVersion, embedderId, dims }) };
+export function buildIndex({ chunks, vectors = null, dims = 0, embedderId = "bm25", corpusVersion = "0", chunkChars = 0 }) {
+  return { chunks, vectors: vectors ? Float32Array.from(vectors) : null, dims, embedderId, corpusVersion, chunkChars, key: indexKey({ corpusVersion, embedderId, dims, chunkChars }) };
 }
 
 // Base64 over bytes, implemented here rather than via btoa or Buffer so the same code runs in a
@@ -373,6 +383,7 @@ export function serializeIndex(index) {
     embedderId: index.embedderId,
     dims: index.dims,
     corpusVersion: index.corpusVersion,
+    chunkChars: index.chunkChars ?? 0,
     chunkerVersion: CHUNKER_VERSION,
     chunks: index.chunks.map((chunk) => ({ id: chunk.id, index: chunk.index, path: chunk.path || "", heading: chunk.heading || "", text: chunk.text })),
     vectors: index.vectors ? encodeVector(new Uint8Array(index.vectors.buffer, index.vectors.byteOffset, index.vectors.byteLength)) : null,
@@ -395,5 +406,14 @@ export function deserializeIndex(json, { chunkerVersion = CHUNKER_VERSION } = {}
     text: chunk.text ?? "",
     tokens: tokenize(`${chunk.heading || ""} ${chunk.text || ""}`),
   }));
-  return buildIndex({ chunks, vectors, dims: parsed.dims || 0, embedderId: parsed.embedderId || "bm25", corpusVersion: parsed.corpusVersion || "0" });
+  // Every input to the key has to survive the round trip. Dropping one here makes the rebuilt key differ
+  // from the key the artifact was written with, so the runtime refuses its own artifact and answers from
+  // BM25 instead, with no error anywhere.
+  return buildIndex({
+    chunks, vectors,
+    dims: parsed.dims || 0,
+    embedderId: parsed.embedderId || "bm25",
+    corpusVersion: parsed.corpusVersion || "0",
+    chunkChars: parsed.chunkChars ?? 0,
+  });
 }

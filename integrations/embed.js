@@ -16,7 +16,7 @@ import { fetchDatafileContext } from "./datafile-context.js";
 // The manifest-declared context reads live in their own DOM-free module so they can be tested without a
 // browser. Re-exported below, because host-check and the docs import them from here.
 import { contextCredentials, fetchApp, fetchField, fetchJson, fetchRecord } from "./context-read.js";
-import { buildCorpusIndex, corpusChunks, createRetrievalContext, fetchCorpus, indexCache } from "./retrieval-context.js";
+import { buildCorpusIndex, corpusChunks, createRetrievalContext, fetchCorpus, indexCache, indexParams } from "./retrieval-context.js";
 import { createEmbedder } from "../src/embedder.js";
 import { MD_CSS, renderMarkdown } from "./chat.js"; // also registers <pslm-chat>, the chat surface
 import { assistantSystemPrompt } from "./chat-core.js";
@@ -700,7 +700,7 @@ export {
   // Re-exported from context-read.js: these were defined here until they moved somewhere testable.
   contextCredentials, fetchApp, fetchField, fetchJson, fetchRecord, loadConfig,
   // Retrieval, re-exported for the same reason: host-check must exercise the panel's own provider.
-  createRetrievalContext, buildCorpusIndex, fetchCorpus, corpusChunks,
+  createRetrievalContext, buildCorpusIndex, fetchCorpus, corpusChunks, createEmbedder, indexParams,
 };
 
 // Auto-mount only in a browser; hosts may call mountFromManifest() themselves.

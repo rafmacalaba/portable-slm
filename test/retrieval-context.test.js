@@ -4,7 +4,9 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { buildCorpusIndex, corpusChunks, createRetrievalContext, fetchCorpus } from "../integrations/retrieval-context.js";
 import { buildIndex, indexKey, serializeIndex } from "../src/retrieval.js";
+import { indexParams } from "../integrations/retrieval-context.js";
 import { HOST_API_VERSION } from "../integrations/host-contract.js";
+import { DEFAULTS } from "../src/models.js";
 
 const BASE = "https://host.example/app/";
 const DOC = `# Handbook
@@ -93,7 +95,8 @@ test("no declared corpus means no provider at all", () => {
 test("a paraphrase finds the right section once embeddings are available", async () => {
   const docs = corpusChunks(await fetchCorpus(manifest(), BASE, { fetch: textFetch({ "/handbook.md": DOC }) }));
   // A fake embedder: the paraphrase vector is close to the section that shares no words with the question.
-  const dims = 4;
+  // dims must be one the chosen model supports; the default has no Matryoshka steps, so it is 384.
+  const dims = 384;
   const target = docs.findIndex((chunk) => chunk.heading === "Access policy");
   const vectors = new Float32Array(docs.length * dims);
   vectors[target * dims] = 1;
@@ -103,9 +106,14 @@ test("a paraphrase finds the right section once embeddings are available", async
     get loaded() { return { dims: 768, device: "wasm" }; },
     embed: async (texts, { kind }) => {
       void texts;
-      return (Array.isArray(texts) ? texts : [texts]).map(() => (kind === "query"
-        ? Float32Array.from([1, 0, 0, 0])
-        : Float32Array.from([0, 1, 0, 0])));
+      // Query and document must land on the same axis or every cosine is 0, which is what a self-inconsistent
+    // fake looks like: a passing test with an empty context.
+    return (Array.isArray(texts) ? texts : [texts]).map((text) => {
+        const v = new Float32Array(dims);
+        const matches = kind === "query" ? /how long until it is public/.test(text) : /embargo are released/.test(text);
+        v[matches ? 0 : 1] = 1;
+        return v;
+      });
     },
   };
   const storage = memStorage();
@@ -124,9 +132,11 @@ test("a paraphrase finds the right section once embeddings are available", async
 });
 
 test("a prebuilt index is used as-is, and a stale one is refused rather than answered from", async () => {
-  const chunks = corpusChunks(await fetchCorpus(manifest(), BASE, { fetch: textFetch({ "/handbook.md": DOC }) }));
-  const dims = 2;
-  const fresh = buildIndex({ chunks, vectors: new Float32Array(chunks.length * dims), dims, embedderId: "e", corpusVersion: "0" });
+  // A builder must use the same derived parameters the runtime does, including the chunk size: 480-char and
+  // 1200-char chunks of one corpus are different indexes, and the runtime refuses the one it did not build.
+  const { dims, chunks: chunkChars, embedderId } = indexParams(DEFAULTS.embedder, {});
+  const chunks = corpusChunks(await fetchCorpus(manifest(), BASE, { fetch: textFetch({ "/handbook.md": DOC }) }), { targetChars: chunkChars });
+  const fresh = buildIndex({ chunks, vectors: new Float32Array(chunks.length * dims), dims, embedderId, corpusVersion: "0", chunkChars });
   const files = { "/handbook.md": DOC, "/pslm.index.json": serializeIndex(fresh) };
   const provider = createRetrievalContext({
     manifest: manifest({ retrieval: { index: "/pslm.index.json", dims, corpusVersion: "0" } }),

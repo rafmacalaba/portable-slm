@@ -134,7 +134,10 @@ test("indexKey changes with every input, so stale vectors cannot be reused", () 
   assert.notEqual(base, indexKey({ corpusVersion: "1", embedderId: "f", dims: 256, chunkerVersion: 1 }));
   assert.notEqual(base, indexKey({ corpusVersion: "1", embedderId: "e", dims: 768, chunkerVersion: 1 }));
   assert.notEqual(base, indexKey({ corpusVersion: "1", embedderId: "e", dims: 256, chunkerVersion: 2 }));
-  assert.match(base, new RegExp(`/${CHUNKER_VERSION}$`));
+  // Chunk size belongs in the key: the same corpus at 480-char and 1200-char chunks is two indexes, and
+  // comparing vectors built from different text is the failure the key exists to prevent.
+  assert.notEqual(base, indexKey({ corpusVersion: "1", embedderId: "e", dims: 256, chunkerVersion: 1, chunkChars: 480 }));
+  assert.match(base, new RegExp(`/${CHUNKER_VERSION}/0$`));
 });
 
 test("a serialized index round-trips, vectors and ranking intact", () => {

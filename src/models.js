@@ -100,10 +100,32 @@ export const MODELS = {
 // Only the text encoder is listed. EmbeddingGemma 2 also ships a vision encoder and an audio encoder,
 // and they are deliberately absent: an undeclared file cannot be downloaded, because the pinned fetch
 // layer throws on anything the catalogue does not name.
+// The default embedder. Its model ships inside the wasm, so there is nothing to download at runtime, no
+// revision to pin and nothing for the store to verify: the dependency is the pin. 1.5 ms per embedding
+// measured on CPU, which is what makes indexing a corpus in the browser affordable at all.
+MODELS["ternlight-base"] = {
+  label: "ternlight base (384d · ~7 MB, bundled)",
+  kind: "embedding",
+  runtime: "ternlight", tier: "default",
+  package: "@ternlight/base", version: "0.1.1",
+  dims: 384, mrl: [384], ctx: 128, chunkChars: 480, pooling: "model",
+  // Measured on 8 in-corpus and 6 out-of-corpus questions: the best in-corpus match scored 0.26 to 0.65
+  // and the best out-of-corpus match 0.00 to 0.12. 0.18 sits in that gap. It is a heuristic that reduces
+  // false positives rather than a guarantee, which is why the grounding stamp remains the real check.
+  minSimilarity: 0.18,
+  license: "MIT",
+  verified: "Node, 200 runs: 1.49 ms/embedding, 384 dims, L2 norm 1.000000",
+};
+
 MODELS["embeddinggemma-2-text-q4f16"] = {
   label: "EmbeddingGemma 2 text (Q4F16 · ~181 MB)",
   kind: "embedding",
-  runtime: "transformers", format: "ONNX",
+  runtime: "transformers", format: "ONNX", tier: "quality",
+  prefixes: "embeddinggemma",
+  chunkChars: 1200,
+  // Measured on the same questions: the best in-corpus match scored 0.66 to 0.85 and the best
+  // out-of-corpus match 0.53 to 0.60, so the floor sits at 0.62 rather than in a wide gap.
+  minSimilarity: 0.62,
   repo: "onnx-community/embeddinggemma-2-ONNX", revision: EMBEDDINGGEMMA2_REV,
   dtype: "q4f16", subfolder: "onnx",
   dims: 768, mrl: [768, 512, 256, 128], ctx: 8192, output: "sentence_embedding",
@@ -137,6 +159,8 @@ export const DEFAULTS = {
   // alone; the mix is the default because each scorer is weak exactly where the other is strong.
   // dims 256 is a Matryoshka truncation of the embedder's 768, which quarters the index for a
   // quality difference that is not measurable on short chunks.
+  // dims is a request, not a promise: the provider takes the nearest Matryoshka step the chosen embedder
+  // actually supports, and ternlight has none, so it uses all 384.
   retrieval: { alpha: 0.5, dims: 256, topK: 6, maxBytes: 8192 },
-  embedder: "embeddinggemma-2-text-q4f16",
+  embedder: "ternlight-base",
 };

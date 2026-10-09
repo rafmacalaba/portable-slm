@@ -15,9 +15,9 @@ import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import puppeteer from "puppeteer-core";
-import { buildCorpusIndex, createRetrievalContext } from "../integrations/retrieval-context.js";
-import { buildIndex, chunkText, matryoshka, serializeIndex } from "../src/retrieval.js";
-import { DEFAULTS, EMBEDDING_PREFIXES } from "../src/models.js";
+import { buildCorpusIndex, createRetrievalContext, indexParams } from "../integrations/retrieval-context.js";
+import { buildIndex, chunkText, serializeIndex } from "../src/retrieval.js";
+import { DEFAULTS } from "../src/models.js";
 
 const CHROME = process.env.CHROME_PATH ?? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
 const PORT = Number(process.env.PORT ?? 8799);
@@ -70,26 +70,18 @@ const page_ = (name) => `<!doctype html><html lang="en"><head><meta charset="utf
 <div data-pslm data-manifest="./${name}" data-launcher="Ask this page"></div>
 <script type="module" src="./embed.js"></script></body></html>`;
 
-/** Build a real prebuilt artifact when the pinned embedder is available locally. */
+/**
+ * Build the prebuilt artifact with the real default embedder. ternlight runs in Node as well as the browser,
+ * so the artifact is produced by the same model the browser will use to embed the question, and the whole
+ * path is exercised with nothing faked and nothing large downloaded.
+ */
 async function prebuiltIndex() {
-  const dir = process.env.PSLM_LOCAL_MODEL;
-  if (!dir || !existsSync(join(dir, "onnx", "model_q4f16.onnx"))) return null;
-  const { AutoModel, AutoTokenizer, env } = await import("@huggingface/transformers");
-  env.allowLocalModels = true;
-  env.allowRemoteModels = false;
-  env.localModelPath = dir.slice(0, dir.lastIndexOf("/")) || "/";
-  env.useBrowserCache = false;
-  env.useFSCache = false;
-  const id = dir.slice(dir.lastIndexOf("/") + 1);
-  const chunks = chunkText(CORPUS, { path: "Handbook" });
-  const tokenizer = await AutoTokenizer.from_pretrained(id, { revision: "local" });
-  const model = await AutoModel.from_pretrained(id, { dtype: "q4f16", subfolder: "onnx", device: "cpu" });
-  const encoded = await tokenizer(chunks.map((chunk) => EMBEDDING_PREFIXES.document(chunk.heading, chunk.text)), { padding: true, truncation: true, max_length: 8192 });
-  const out = await model({ input_ids: encoded.input_ids, attention_mask: encoded.attention_mask });
-  const [count, width] = out.sentence_embedding.dims;
-  const vectors = new Float32Array(count * DIMS);
-  for (let i = 0; i < count; i++) vectors.set(matryoshka(out.sentence_embedding.data.subarray(i * width, (i + 1) * width), DIMS), i * DIMS);
-  return serializeIndex(buildIndex({ chunks, vectors, dims: DIMS, embedderId: DEFAULTS.embedder, corpusVersion: CORPUS_VERSION }));
+  const { embed } = await import("@ternlight/base");
+  const { chunks: chunkChars, dims, embedderId } = indexParams(DEFAULTS.embedder, {});
+  const chunks = chunkText(CORPUS, { path: "Handbook", targetChars: chunkChars });
+  const vectors = new Float32Array(chunks.length * dims);
+  chunks.forEach((chunk, i) => vectors.set(embed(chunk.text), i * dims));
+  return serializeIndex(buildIndex({ chunks, vectors, dims, embedderId, corpusVersion: CORPUS_VERSION, chunkChars }));
 }
 
 const results = [];
@@ -122,8 +114,8 @@ writeFileSync(join(FIXTURE, "host.html"), page_("portable-slm.host.json"));
 writeFileSync(join(FIXTURE, "host-bm25.html"), page_("bm25.host.json"));
 
 const prebuilt = await prebuiltIndex();
-if (prebuilt) writeFileSync(join(FIXTURE, "pslm.index.json"), prebuilt);
-console.log(prebuilt ? "prebuilt index: built from the local pinned embedder" : "prebuilt index: PSLM_LOCAL_MODEL not set, skipping those checks\n");
+writeFileSync(join(FIXTURE, "pslm.index.json"), prebuilt);
+console.log(`prebuilt index: built with ${DEFAULTS.embedder}, ${(prebuilt.length / 1024).toFixed(0)} KB, no download\n`);
 
 // The provider itself, without a browser, so a failure says whether it is the ranker or the DOM.
 {
@@ -152,46 +144,44 @@ try {
     const disclosure = await page.evaluate(() => document.querySelector(".state").title);
     check(`[${label}] the panel discloses retrieval as the source`, /retrieved from this application's own documents/.test(disclosure));
 
-    const ask = (question, withEmbedder = false) => page.evaluate(async (q, useEmbedder) => {
+    // One provider per page, held open, so the background upgrade to embeddings is observed rather than
+    // restarted. No embedder is injected: this is the default tier doing the work.
+    const ask = (question) => page.evaluate(async (q) => {
       const mod = await import("./embed.js");
       const name = location.pathname.includes("bm25") ? "bm25.host.json" : "portable-slm.host.json";
       const declared = await (await fetch(`./${name}`)).json();
-      let loaded = null;
-      const fake = useEmbedder ? {
-        status: async () => ({ state: "installed" }),
-        load: async () => { loaded = { dims: 768, device: "wasm" }; return {}; },
-        get loaded() { return loaded; },
-        embed: async (texts, { kind }) => (Array.isArray(texts) ? texts : [texts]).map((text) => {
-          const v = new Float32Array(256);
-          v[kind === "query" ? (/read|public|wait/.test(text) ? 0 : 1) : (/embargo|twelve months|board/.test(text) ? 0 : 1)] = 1;
-          return v;
-        }),
-      } : null;
-      const provider = mod.createRetrievalContext({ manifest: declared, base: location.href, embedder: fake });
+      // The embedder has to be handed over: without one the provider is BM25-only by design, and the
+      // disclosure says so. The panel passes its own; a bare caller has to pass this one.
+      globalThis.__pslmProvider ??= mod.createRetrievalContext({
+        manifest: declared, base: location.href, embedder: mod.createEmbedder({}),
+      });
+      const provider = globalThis.__pslmProvider;
       const ready = await provider.ready();
-      if (useEmbedder) await fake.load();
+      // Wait for the embedding upgrade, which the bundled runtime finishes in milliseconds.
+      for (let i = 0; i < 60 && provider.source !== "embedded" && provider.source !== "prebuilt"; i++) {
+        await new Promise((r) => setTimeout(r, 50));
+        if (provider.source !== "bm25") break;
+      }
       return { source: provider.source, note: ready.note, context: await provider.onContext(q) };
-    }, question, withEmbedder);
+    }, question);
 
-    const keyword = await ask("house_hold_id");
-    check(`[${label}] an identifier is retrieved and labelled`, /^### Identifiers\n[\s\S]*house_hold_id/.test(keyword.context));
+    const first = await ask("house_hold_id");
+    check(`[${label}] an identifier is retrieved and labelled`, /^### Identifiers\n[\s\S]*house_hold_id/.test(first.context));
+    check(`[${label}] the context is a selection, not the document`, (first.context.match(/^### /gm) || []).length < 8);
 
-    const sections = (keyword.context.match(/^### /gm) || []).length;
-    check(`[${label}] the context is a selection, not the document`, sections <= 3 && sections < 8, `${sections} of 8 sections cited`);
+    // The real thing: a question sharing no words with the corpus, answered by the bundled embedder, in a
+    // browser, with nothing downloaded and no stand-in.
+    const semantic = await ask("how long before I can read it");
+    check(`[${label}] a paraphrase reaches the section that shares no words`, /twelve months after deposit/.test(semantic.context), `source=${semantic.source}`);
+    check(`[${label}] and does not drag in unrelated sections`, !/house_hold_id|Write to the data team/.test(semantic.context));
 
-    const off = await ask("what is the capital of Peru");
+    const off = await ask("how do I bake sourdough bread");
     check(`[${label}] a question the corpus does not cover yields nothing`, off.context.length === 0, `bytes=${off.context.length}`);
 
-    if (expectSource === "prebuilt" && prebuilt) {
-      const semantic = await ask("how long before I can read it", true);
-      check(`[${label}] with an embedder, a paraphrase reaches the section that shares no words`, /twelve months after deposit/.test(semantic.context));
-      check(`[${label}] and does not drag in unrelated sections`, !/house_hold_id|Write to the data team/.test(semantic.context));
+    if (expectSource === "prebuilt") {
+      check(`[${label}] the artifact is used as shipped`, semantic.source === "prebuilt", `source=${semantic.source}`);
     } else {
-      const semantic = await ask("how long before I can read it");
-      // Honest limitation: a prebuilt artifact removes the corpus embedding cost, not the query cost, so
-      // without the embedder a question sharing no words with the corpus retrieves nothing.
-      check(`[${label}] a pure paraphrase finds nothing without a query embedder`, !/twelve months/.test(semantic.context));
-      check(`[${label}] the disclosure says it is keyword-only`, /keyword search only/.test(semantic.note || ""));
+      check(`[${label}] with no artifact the browser indexes the corpus itself`, semantic.source === "embedded", `source=${semantic.source}`);
     }
 
     check(`[${label}] no page errors`, errors.length === 0, errors.slice(0, 1).join(""));

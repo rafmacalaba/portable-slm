@@ -6,9 +6,11 @@
 // they can: if the embedder is already installed it is used, and if it is not, the session keeps working
 // from BM25 and the panel says what a download would add. A first visit should never be a 181 MB
 // prerequisite for an answer that keyword search could have given.
-import { DEFAULTS } from "../src/models.js";
+import { DEFAULTS, MODELS } from "../src/models.js";
+import { embedDims } from "../src/embedder.js";
 import {
-  CHUNKER_VERSION, buildIndex, chunkText, deserializeIndex, indexKey, rankChunks, selectUnderCap, serializeIndex,
+  CHUNKER_VERSION, RETRIEVAL_DEFAULTS, buildIndex, chunkText, deserializeIndex, indexKey, rankChunks, selectUnderCap,
+  serializeIndex,
 } from "../src/retrieval.js";
 import { documents, fetchCredentials, retrievalOptions } from "./host-contract.js";
 
@@ -59,9 +61,34 @@ export async function fetchCorpus(manifest, base, { fetch: request = globalThis.
   return corpus;
 }
 
-/** Chunk every document. The label becomes the chunk path, so a hit can be cited back to its file. */
-export function corpusChunks(corpus) {
-  return corpus.flatMap((doc) => chunkText(doc.text, { path: doc.path }));
+/**
+ * Chunk every document. The label becomes the chunk path, so a hit can be cited back to its file.
+ *
+ * The chunk size comes from the embedder, because the embedder's input limit decides it: a 128-token model
+ * silently discards everything past roughly 500 characters, so a 1200-character chunk would be indexed as
+ * its own head. The same corpus therefore chunks differently per tier, which is why the size is part of the
+ * index key.
+ */
+export function corpusChunks(corpus, { targetChars = RETRIEVAL_DEFAULTS.targetChars } = {}) {
+  return corpus.flatMap((doc) => chunkText(doc.text, { path: doc.path, targetChars }));
+}
+
+/**
+ * Everything that defines an index, derived from the embedder rather than guessed.
+ *
+ * A host building a prebuilt artifact has to use these exact values, or the artifact's key will not match
+ * what the runtime computes and it will be refused: a 480-character chunk and a 1200-character chunk are
+ * different indexes of the same corpus. Exported so a build script can be correct by construction instead
+ * of by copying constants.
+ */
+export function indexParams(modelId = DEFAULTS.embedder, options = {}) {
+  const spec = MODELS[modelId];
+  return {
+    embedderId: modelId,
+    chunks: spec?.chunkChars ?? RETRIEVAL_DEFAULTS.targetChars,
+    dims: spec ? embedDims(spec, options.dims ?? DEFAULTS.retrieval.dims) : DEFAULTS.retrieval.dims,
+    minSimilarity: options.minSimilarity ?? spec?.minSimilarity ?? 0,
+  };
 }
 
 /**
@@ -70,11 +97,13 @@ export function corpusChunks(corpus) {
  */
 export async function buildCorpusIndex({ manifest, base, fetch: request = globalThis.fetch, storage, embedder, modelId = DEFAULTS.embedder, onStatus = () => {} } = {}) {
   const options = retrievalOptions(manifest);
-  const dims = options.dims ?? DEFAULTS.retrieval.dims;
+  // The embedder decides three things the host should not have to: how big a chunk can be, how wide a
+  // vector is, and how similar a match has to be to count as one at all.
+  const { dims, chunks: chunkChars, minSimilarity } = indexParams(modelId, options);
   const corpusVersion = options.corpusVersion ?? "0";
   const corpus = await fetchCorpus(manifest, base, { fetch: request });
-  const chunks = corpusChunks(corpus);
-  if (!chunks.length) return { index: null, upgrade: null, options, dims, chunkerVersion: CHUNKER_VERSION };
+  const chunks = corpusChunks(corpus, { targetChars: chunkChars });
+  if (!chunks.length) return { index: null, upgrade: null, options, dims, chunkChars, minSimilarity, chunkerVersion: CHUNKER_VERSION };
 
   // A prebuilt index is tried first: it needs no embedder, no download and no waiting.
   if (options.index) {
@@ -82,12 +111,12 @@ export async function buildCorpusIndex({ manifest, base, fetch: request = global
       const res = await request(new URL(options.index, base).href, { credentials: fetchCredentials(manifest) });
       if (res.ok) {
         const prebuilt = deserializeIndex(await res.text());
-        if (prebuilt?.key === indexKey({ corpusVersion, embedderId: prebuilt.embedderId, dims: prebuilt.dims })) {
+        if (prebuilt?.key === indexKey({ corpusVersion, embedderId: prebuilt.embedderId, dims: prebuilt.dims, chunkChars })) {
           // The prebuilt artifact carries its own chunk text, which must still match the corpus on disk:
           // a stale artifact would answer from content the host has since edited.
           const same = prebuilt.chunks.length === chunks.length
             && prebuilt.chunks.every((chunk, i) => chunk.text === chunks[i].text);
-          if (same) return { index: prebuilt, upgrade: null, options, dims, source: "prebuilt", chunkerVersion: CHUNKER_VERSION };
+          if (same) return { index: prebuilt, upgrade: null, options, dims, chunkChars, minSimilarity, source: "prebuilt", chunkerVersion: CHUNKER_VERSION };
           onStatus("prebuilt index does not match the corpus on disk; rebuilding", "warn");
         } else if (prebuilt) {
           onStatus("prebuilt index was built for a different corpus or embedder; rebuilding", "warn");
@@ -98,25 +127,27 @@ export async function buildCorpusIndex({ manifest, base, fetch: request = global
     }
   }
 
-  const key = indexKey({ corpusVersion, embedderId: modelId, dims });
+  const key = indexKey({ corpusVersion, embedderId: modelId, dims, chunkChars });
   if (storage) {
     try {
       const cached = deserializeIndex(await storage.get(key));
       if (cached && cached.chunks.length === chunks.length) {
-        return { index: cached, upgrade: null, options, dims, source: "cache", chunkerVersion: CHUNKER_VERSION };
+        return { index: cached, upgrade: null, options, dims, chunkChars, minSimilarity, source: "cache", chunkerVersion: CHUNKER_VERSION };
       }
     } catch { /* a bad cache entry is rebuilt, never fatal */ }
   }
 
   // BM25 answers now. This is the floor, not a fallback: it needs no model and works offline.
-  const lexical = buildIndex({ chunks, embedderId: "bm25", corpusVersion });
-  if (!embedder?.status) return { index: lexical, upgrade: null, options, dims, source: "bm25", chunkerVersion: CHUNKER_VERSION };
+  const lexical = buildIndex({ chunks, embedderId: "bm25", corpusVersion, chunkChars });
+  if (!embedder?.status) return { index: lexical, upgrade: null, options, dims, chunkChars, minSimilarity, source: "bm25", chunkerVersion: CHUNKER_VERSION };
 
   return {
     index: lexical,
     source: "bm25",
     options,
     dims,
+    chunkChars,
+    minSimilarity,
     chunkerVersion: CHUNKER_VERSION,
     upgrade: (async () => {
       const status = await embedder.status(modelId);
@@ -136,7 +167,7 @@ export async function buildCorpusIndex({ manifest, base, fetch: request = global
         embedded.forEach((vector, i) => vectors.set(vector, (start + i) * dims));
         onStatus(`indexing ${Math.min(start + EMBED_BATCH, chunks.length)} of ${chunks.length} sections`);
       }
-      const index = buildIndex({ chunks, vectors, dims, embedderId: modelId, corpusVersion });
+      const index = buildIndex({ chunks, vectors, dims, embedderId: modelId, corpusVersion, chunkChars });
       if (storage) await storage.put(key, serializeIndex(index)).catch(() => {});
       return { index, source: "embedded" };
     })().catch((err) => ({ index: lexical, source: "bm25", reason: err.message })),
@@ -150,14 +181,31 @@ export async function buildCorpusIndex({ manifest, base, fetch: request = global
 export function createRetrievalContext({ manifest, base, fetch: request = globalThis.fetch, storage, embedder, modelId = DEFAULTS.embedder, onStatus = () => {} } = {}) {
   const declared = documents(manifest);
   if (!declared.length) return null;
-  const state = { index: null, dims: DEFAULTS.retrieval.dims, options: {}, source: "starting" };
+  const state = { index: null, dims: DEFAULTS.retrieval.dims, options: {}, source: "starting", minSimilarity: 0 };
   let pending = null;
+
+  /**
+   * Load the embedder for the query half, without re-embedding the corpus.
+   *
+   * A prebuilt artifact supplies the corpus vectors, which is half the job: the question still has to be
+   * embedded by the same model, or the index sits there unused and the session quietly answers from
+   * keywords. Loading on the first question keeps the panel responsive at mount, and only happens when the
+   * index actually has vectors to compare against.
+   */
+  async function queryEmbedder() {
+    if (!embedder?.status || !state.index?.vectors) return null;
+    if (!embedder.loaded) await embedder.load(modelId);
+    return embedder;
+  }
 
   async function prepare() {
     try {
       const built = await buildCorpusIndex({ manifest, base, fetch: request, storage, embedder, modelId, onStatus });
       if (!built.index) return { note: `the declared corpus produced no sections` };
-      Object.assign(state, { index: built.index, dims: built.dims, options: built.options, source: built.source });
+      Object.assign(state, {
+        index: built.index, dims: built.dims, options: built.options, source: built.source,
+        minSimilarity: built.minSimilarity ?? 0,
+      });
       if (built.upgrade) {
         built.upgrade.then((upgraded) => {
           if (upgraded.index === state.index) return;
@@ -193,10 +241,13 @@ export function createRetrievalContext({ manifest, base, fetch: request = global
       if (!state.index) await this.ready();
       if (!state.index) return "";
       let queryVector;
-      const loaded = embedder?.loaded;
-      if (loaded?.dims) {
+      const ready = await queryEmbedder().catch((err) => {
+        onStatus(`query embedding unavailable, answering from keywords: ${err.message}`, "warn");
+        return null;
+      });
+      if (ready?.loaded) {
         try {
-          const [vector] = await embedder.embed(question, { kind: "query", dims: state.dims });
+          const [vector] = await ready.embed(question, { kind: "query", dims: state.dims });
           // The query must be truncated to the index width, or every cosine returns 0 for a length mismatch.
           if (vector?.length === state.index.dims) queryVector = vector;
         } catch (err) {
@@ -207,6 +258,7 @@ export function createRetrievalContext({ manifest, base, fetch: request = global
         k: state.options.topK ?? DEFAULTS.retrieval.topK,
         alpha: state.options.alpha ?? DEFAULTS.retrieval.alpha,
         queryVector,
+        minSimilarity: state.minSimilarity,
       });
       if (!ranked.length) return "";
       const { text, omitted, truncated } = selectUnderCap(ranked, {

@@ -106,6 +106,7 @@
   },
   "dependencies": {
     "@huggingface/transformers": "4.3.1",
+    "@ternlight/base": "^0.1.1",
     "@wllama/wllama": "3.6.1",
     "@wllama/wllama-compat": "3.6.1"
   }

@@ -59,46 +59,81 @@ does not match the current corpus. The browser path checks the prebuilt file fir
 - **`retrieval.alpha`** is the embedding weight. `0` is BM25 alone, `1` is embeddings alone.
 - Everything here is optional. No `documents` means no retrieval, and a bare mount stays cheap.
 
-## The embedder
+## The embedder: two tiers, and the corpus decides
 
-`embeddinggemma-2-text-q4f16` is pinned in `src/models.js`: **the text encoder only**, ~181 MB, 768
-dimensions, 8K context, Apache-2.0, from `onnx-community/embeddinggemma-2-ONNX`.
+| | **ternlight** (default) | **EmbeddingGemma 2 text** (quality) |
+|---|---|---|
+| install | **nothing.** The model ships inside the package | ~181 MB, downloaded once, pinned by revision and per-file SHA-256 |
+| speed | **1.49 ms** per embedding, measured over 200 runs | 44 s for 249 chunks on CPU, which is why it wants a prebuilt index |
+| dimensions | 384, no Matryoshka training | 768, MRL to 512 / 256 / 128 |
+| input | 128 tokens, so chunks are 480 characters | 8K tokens, so chunks are 1200 characters |
+| instruction prefixes | none, it is a symmetric encoder | required: a query and a document take different ones, and omitting them does not error, it just returns worse vectors |
+| similarity floor | 0.18 | 0.62 |
+| licence | MIT | Apache-2.0 |
 
-EmbeddingGemma 2 also ships a vision encoder and an audio encoder. They are not in the catalogue, and
-they are not merely unused: the pinned fetch layer throws on any file the catalogue does not name, so an
-undeclared encoder cannot be downloaded even by accident. Text-only means text-only.
+Both floors and both chunk sizes are **measured values, not preferences**. On 8 in-corpus and 6 out-of-corpus
+questions the best in-corpus match scored 0.26 to 0.65 for ternlight and 0.66 to 0.85 for EmbeddingGemma, while
+the best out-of-corpus match scored 0.00 to 0.12 and 0.53 to 0.60. The two scales are not comparable, so a
+shared constant would be wrong for at least one of them. A *margin* signal was tried first and rejected: one
+ternlight in-corpus question had a margin of 0.098, below an out-of-corpus margin of 0.118, so it does not
+separate cleanly. The floors reduce false positives; they are not a guarantee, and the grounding stamp remains
+the check that an answer came from the supplied context.
 
-Two details matter more than they look:
+`retrieval.minSimilarity` in the manifest overrides the catalogue's floor, because a host that has measured
+its own questions knows better than a default.
 
-- **Instruction prefixes.** The model is trained with them. A query is
-  `task: search result | query: {question}`; a document is `title: {heading} | text: {chunk}`. Omit them
-  and nothing errors, the vectors are just worse. They are in `EMBEDDING_PREFIXES` in `src/models.js`.
-- **Pooling is mean, and vectors are L2-normalized**, so a dot product is the cosine.
+### Which tier to choose
+
+This is a decision about the corpus and the audience, not about the SDK's preference.
+
+| | ternlight | EmbeddingGemma 2 |
+|---|---|---|
+| a public site, casual visitors, short sessions | **yes.** Nothing to download, and the browser indexes the corpus in milliseconds | no: 181 MB for a visitor who will ask one question |
+| an internal tool with returning users and a large documentation corpus | workable | **yes**, if answers matter more than a one-time download |
+| a corpus of identifiers, field names, codes | **yes**, and it is not a compromise: measured, it ranked `house_hold_id` correctly where the larger model put it below an unrelated sentence, because it shares the WordPiece tokenizer's view of that identifier | check your own corpus |
+| many languages | English-leaning, distilled from MiniLM | 100+ languages |
+
+Practical starting rule: **compare chunk count against the cost before choosing.** At 480 characters a corpus of
+200 KB is roughly 400 chunks, which ternlight indexes in under a second in the browser. The same corpus at 1200
+characters is roughly 160 chunks and takes EmbeddingGemma about 28 seconds, so it needs a prebuilt artifact
+rather than a browser build. Past roughly 500 chunks, index in the build, whatever the tier.
+
+## Instruction prefixes and chunk sizes are not a host's business
+
+Both are decided by the embedder and read from the catalogue, which is why `indexParams()` exists. A build
+script must use it, or the artifact's key will not match what the runtime computes and the artifact will be
+refused with no error beyond a fallback to keywords.
 
 ## Building a prebuilt index
 
-The index is a plain JSON artifact (`format: "pslm-index/1"`), so a host can commit it and review a diff
-of it. Build it with the same code the browser uses, so the two cannot disagree:
+The index is plain JSON (`format: "pslm-index/1"`), so a host can commit it and review a diff of it. Use the
+runtime's own helpers, so the artifact cannot disagree with the reader:
 
 ```js
 import { readFileSync, writeFileSync } from "node:fs";
-import { chunkText, serializeIndex, buildIndex, tokenize } from "portable-slm/retrieval";
+import { embed } from "@ternlight/base";
+import { chunkText, buildIndex, serializeIndex } from "portable-slm/retrieval";
+import { indexParams } from "portable-slm/retrieval-context";
 
-const files = ["handbook.md", "glossary.md"];
-const chunks = files.flatMap((path) => chunkText(readFileSync(path, "utf8"), { path }));
-
-// Embed `chunks` with the pinned embedder, in your own build step, with the prefixes above.
-// Then truncate every vector to `dims` (Matryoshka: take the first `dims` values and re-normalize).
-const vectors = await embedAll(chunks, { dims: 256 });
+// The runtime derives the chunk size, the width and the floor from the embedder. Ask for the same values.
+const { dims, chunks: chunkChars, embedderId } = indexParams("ternlight-base", {});
+const chunks = files.flatMap((path) => chunkText(readFileSync(path, "utf8"), { path, targetChars: chunkChars }));
+const vectors = new Float32Array(chunks.length * dims);
+chunks.forEach((chunk, i) => vectors.set(embed(chunk.text), i * dims));
 
 writeFileSync("public/pslm.index.json", serializeIndex(buildIndex({
-  chunks,
-  vectors,
-  dims: 256,
-  embedderId: "embeddinggemma-2-text-q4f16",
-  corpusVersion: "2026-10-09",
+  chunks, vectors, dims, embedderId, chunkChars, corpusVersion: "2026-10-09",
 })));
 ```
+
+An artifact is refused, not half-used, when its key differs from the runtime's. That covers a changed corpus
+version, a different embedder, a different width and a different chunk size, and it covers a corpus that has
+been edited since the artifact was built: the chunk text must match too.
+
+**A prebuilt artifact removes the corpus embedding cost, not the query cost.** The index is instant, and the
+question is still embedded at query time, so the embedder loads on the first question. With ternlight that is
+milliseconds and nothing to download. With EmbeddingGemma it is the 181 MB install, so an artifact does not
+make the large tier cheap for a first-time visitor.
 
 ## Rules that keep retrieval honest
 

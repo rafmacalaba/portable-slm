@@ -243,8 +243,9 @@ and asks before removing anything.
 
 ## License
 
-The source is MIT; see [`LICENSE`](LICENSE). wllama is MIT. The runtime dependencies are three, all pinned:
-`@huggingface/transformers`, `@wllama/wllama` and `@wllama/wllama-compat`. Model weights are **not** bundled and carry their own terms:
+The source is MIT; see [`LICENSE`](LICENSE). wllama is MIT. The runtime dependencies are four, all pinned:
+`@huggingface/transformers`, `@wllama/wllama`, `@wllama/wllama-compat` and `@ternlight/base`
+(the default retrieval embedder, whose model ships inside the package). Model weights are **not** bundled and carry their own terms:
 Liquid AI's models use the LFM Open License v1.0, and EmbeddingGemma 2 is Apache-2.0, so review the
 terms before redistributing weights.
 

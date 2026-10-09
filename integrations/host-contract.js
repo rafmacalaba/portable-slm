@@ -79,7 +79,9 @@ export function documents(manifest) {
   });
 }
 
-const RETRIEVAL_KEYS = new Set(["index", "corpusVersion", "dims", "alpha", "topK", "maxBytes"]);
+// `minSimilarity` is per corpus on purpose: the floor that suits one corpus is wrong for another, and a
+// host that has measured its own questions knows better than the catalogue's default.
+const RETRIEVAL_KEYS = new Set(["index", "corpusVersion", "dims", "alpha", "topK", "maxBytes", "minSimilarity"]);
 
 /**
  * Retrieval settings, with every out-of-range value refused rather than clamped. A host that asks for
@@ -102,6 +104,12 @@ export function retrievalOptions(manifest) {
   if (declared.dims !== undefined) {
     if (!Number.isInteger(declared.dims) || declared.dims < 1) throw new Error("retrieval.dims must be a positive integer");
     out.dims = declared.dims;
+  }
+  if (declared.minSimilarity !== undefined) {
+    if (typeof declared.minSimilarity !== "number" || !(declared.minSimilarity >= -1 && declared.minSimilarity <= 1)) {
+      throw new Error("retrieval.minSimilarity must be a number between -1 and 1");
+    }
+    out.minSimilarity = declared.minSimilarity;
   }
   if (declared.alpha !== undefined) {
     if (typeof declared.alpha !== "number" || !(declared.alpha >= 0 && declared.alpha <= 1)) {

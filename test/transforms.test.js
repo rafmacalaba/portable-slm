@@ -52,9 +52,9 @@ test("applyTransform applies a named transform and refuses an unknown one", asyn
   );
 });
 
-test("the pinned embedder is text-only by construction, not by convention", () => {
-  const spec = MODELS[DEFAULTS.embedder];
-  assert.ok(spec, "the default embedder must exist in the catalogue");
+test("the pinned quality embedder is text-only by construction, not by convention", () => {
+  const spec = MODELS["embeddinggemma-2-text-q4f16"];
+  assert.ok(spec, "the quality embedder must exist in the catalogue");
   assert.equal(spec.kind, "embedding");
   assert.equal(spec.output, "sentence_embedding");
   assert.equal(spec.transforms?.["config.json"], "text-only", "without this, a text-only install fetches the modality encoders");
@@ -77,9 +77,30 @@ test("every pinned file carries a real sha256 and a size", () => {
   }
 });
 
-test("the embedder advertises the dimensions retrieval can truncate to", () => {
-  const spec = MODELS[DEFAULTS.embedder];
+test("the quality embedder advertises the dimensions retrieval can truncate to", () => {
+  const spec = MODELS["embeddinggemma-2-text-q4f16"];
   assert.equal(spec.dims, 768);
   assert.ok(spec.mrl.includes(DEFAULTS.retrieval.dims), "the default dims must be a supported Matryoshka step");
   assert.ok(DEFAULTS.retrieval.dims < spec.dims, "the default should truncate, not store the full width");
+});
+
+test("the default embedder is the bundled one, and it costs nothing to install", () => {
+  const spec = MODELS[DEFAULTS.embedder];
+  assert.equal(spec.runtime, "ternlight");
+  assert.equal(spec.tier, "default");
+  assert.ok(!spec.files, "a bundled runtime has nothing to download, so there is nothing to pin");
+  assert.ok(spec.dims > 0 && spec.ctx > 0 && spec.chunkChars > 0);
+  // The input limit is what forces a small chunk: the engine truncates silently past it, so a chunk larger
+  // than this would be indexed as its own head.
+  assert.ok(spec.chunkChars <= spec.ctx * 8, `${spec.chunkChars} chars is too large for a ${spec.ctx}-token input`);
+  assert.ok(spec.minSimilarity > 0, "a semantic floor is required: every chunk is a vector candidate");
+});
+
+test("the two tiers differ where it matters, and each difference is declared", () => {
+  const small = MODELS["ternlight-base"];
+  const large = MODELS["embeddinggemma-2-text-q4f16"];
+  assert.ok(small.chunkChars < large.chunkChars, "the 128-token model needs smaller chunks than the 8K one");
+  assert.ok(small.dims < large.dims);
+  assert.equal(large.prefixes, "embeddinggemma", "instruction prefixes are a property of the model, not the call site");
+  assert.equal(small.prefixes, undefined, "the bundled encoder is symmetric and takes no prefix");
 });
