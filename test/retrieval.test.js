@@ -74,10 +74,22 @@ test("bm25 returns nothing for an empty query and nothing for a term the corpus 
 });
 
 test("bm25 gives a rare term more weight than a common one", () => {
-  const chunks = chunkText(`## A\nembargo record\n\n## B\nrecord\n\n## C\nrecord\n\n## D\nrecord`);
+  const chunks = chunkText(`## A\nembargo record\n\n## B\nrecord\n\n## C\narchive\n\n## D\ndeposit\n\n## E\npublication\n\n## F\ncitation`);
   const rare = bm25(chunks, "embargo")[0].score;
   const common = bm25(chunks, "record")[0].score;
   assert.ok(rare > common, `rare ${rare} should outrank common ${common}`);
+});
+
+test("a term present in most of the corpus separates nothing and yields no hit", () => {
+  const text = ["a", "b", "c", "d", "e"].map((h) => `## ${h}\nthe record`).join("\n\n");
+  const chunks = chunkText(text);
+  assert.equal(chunks.length, 5);
+  // "the" is in every chunk, so it cannot be evidence of anything.
+  assert.deepEqual(bm25(chunks, "the"), []);
+  // A question made only of words the corpus does not distinguish must return nothing rather than noise.
+  assert.deepEqual(bm25(chunks, "what is the capital of the country"), []);
+  // The same corpus still answers a question with a distinctive term in it.
+  assert.equal(bm25(chunks, "record archive").length, 0, "neither term is distinctive here");
 });
 
 test("a query vector can promote a paraphrase that shares no words, and alpha controls how much", () => {

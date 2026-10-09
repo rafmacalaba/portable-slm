@@ -22,6 +22,9 @@
     "./embedder": {
       "default": "./src/embedder.js"
     },
+    "./retrieval-context": {
+      "default": "./integrations/retrieval-context.js"
+    },
     "./field-suggest": {
       "types": "./integrations/field-suggest.d.ts",
       "default": "./integrations/field-suggest.js"
@@ -63,6 +66,7 @@
     "integrations/field-suggest.d.ts",
     "examples/field-suggest.js",
     "bench",
+    "integrations/retrieval-context.js",
     "integrations/embed.js",
     "integrations/logging.js",
     "integrations/logging.d.ts",
@@ -83,7 +87,8 @@
     "e2e:extension": "npm run build:extension && node e2e/extension.mjs",
     "build:embed": "vite build --config vite.embed.config.js && vite build --config vite.chat.config.js && vite build --config vite.logging.config.js && node tools/embed-assets.mjs && node tools/version-stamp.mjs",
     "pack:site": "node tools/site-pack.mjs",
-    "scaffold": "node tools/scaffold.mjs"
+    "scaffold": "node tools/scaffold.mjs",
+    "e2e:retrieval": "npm run build:embed && node e2e/retrieval.mjs"
   },
   "devDependencies": {
     "puppeteer-core": "^25.12.0",

@@ -73,10 +73,11 @@ are testable without a browser. `embed.js` is the only place that wires everythi
 ## Commands
 
 ```sh
-npm test                 # 164 tests, no browser, no GPU
+npm test                 # 200 tests, no browser, no GPU
 npm run build:embed      # dist/embed.js + chat.js + logging.js + embed-assets/
-npm run dev              # the web app, chat, catalogue Q&A, review, benchmark
+npm run dev              # the web app, chat, catalogue Q&A, field suggestion, benchmark
 npm run e2e              # real Chrome, offline, fixtures
+npm run e2e:retrieval    # real Chrome, retrieval against a generated corpus and index
 npm run scaffold -- --out <dir> --shape static|record   # a host starting point
 npm run pack:site -- --out <dir> --runtimes onnx        # the bundle subset a host serves
 ```

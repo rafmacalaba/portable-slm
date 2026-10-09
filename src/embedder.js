@@ -78,13 +78,17 @@ export function createEmbedder({ assets } = {}) {
    * Matryoshka: taking the first N values and re-normalizing is the intended use, not a lossy
    * approximation, which is why the same index can be compared at 256 dimensions as at 768.
    */
-  async function embed(texts, { kind = "document", title = "", dims = DEFAULTS.retrieval.dims } = {}) {
+  async function embed(texts, { kind = "document", title = "", titles, dims = DEFAULTS.retrieval.dims } = {}) {
     return exclusive(async () => {
       if (!model || !tokenizer || !loaded) throw new Error("No embedder loaded: call load() first");
       const list = Array.isArray(texts) ? texts : [texts];
       if (!list.length) return [];
-      const prefix = kind === "query" ? EMBEDDING_PREFIXES.query : (text) => EMBEDDING_PREFIXES.document(title, text);
-      const encoded = await tokenizer(list.map((text) => prefix(String(text))), {
+      // A document prefix carries its own title, and chunks of one document have different headings, so
+      // the batch form takes one title per item. `title: none` is what the card prescribes for an untitled chunk.
+      const prefixed = list.map((text, index) => (kind === "query"
+        ? EMBEDDING_PREFIXES.query(String(text))
+        : EMBEDDING_PREFIXES.document(titles?.[index] ?? title, String(text))));
+      const encoded = await tokenizer(prefixed, {
         padding: true,
         truncation: true,
         // The model's own window. Chunks are sized well below it, so a truncation here means a host

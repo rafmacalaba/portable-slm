@@ -102,22 +102,47 @@ function finalise(chunks, path) {
 }
 
 /**
- * Tokens for scoring. Identifiers matter as much as prose in metadata corpora, so `house_hold`,
+ * Tokens for scoring. Identifiers matter as much as prose in metadata corpora, so `house_hold_id`,
  * `HHID` and `getUserName` are split into parts rather than kept whole or discarded: a field name the
  * user typed verbatim should match with BM25 even when no embedder is installed.
+ *
+ * English function words are dropped, which is a deliberate retreat from doing this statistically. The
+ * corpus-relative rule in `bm25` handles repetition, but on a nine-section corpus "is" appears in two of
+ * them and looks as distinctive as a rare noun, so a question the corpus does not cover comes back with
+ * real sections attached. No statistic available at that corpus size separates the two, so the closed
+ * class is named instead.
+ *
+ * Two things this list deliberately does not do. It excludes short words that carry meaning in metadata
+ * (`id`, `no`, `yr`, `hh`), which is why a minimum-length rule was rejected: it would have discarded
+ * exactly the identifiers this ranker is best at. And it is English only, because a stoplist is a
+ * language's property and this module has no language; a corpus in another language loses nothing it
+ * would otherwise have had from a list of English words, and embeddings are the part that covers it.
  */
+const STOPWORDS = new Set([
+  "a", "about", "an", "and", "are", "as", "at", "be", "been", "but", "by", "can", "could", "did",
+  "do", "does", "for", "from", "had", "has", "have", "he", "her", "his", "how", "if", "in", "into",
+  "is", "it", "its", "may", "me", "my", "not", "of", "on", "or", "our", "she", "should", "so",
+  "than", "that", "the", "their", "them", "then", "there", "these", "they", "this", "those", "to",
+  "was", "we", "were", "what", "when", "where", "which", "who", "why", "will", "with", "would",
+  "you", "your",
+]);
+
 export function tokenize(text) {
   return String(text ?? "")
     .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
     .toLowerCase()
     .split(/[^a-z0-9]+/)
-    .filter((token) => token.length > 1 || /[0-9]/.test(token));
+    .filter((token) => (token.length > 1 || /[0-9]/.test(token)) && !STOPWORDS.has(token));
 }
 
 /**
  * BM25 over chunks. No model, no download, and it works on the phone path where the embedder is
- * deliberately absent. Function words are not removed: a stoplist is corpus-specific, and this module
- * has no corpus.
+ * deliberately absent.
+ *
+ * There is no stoplist, because a stoplist is a language's, not a corpus's, and this ranker is used with
+ * multilingual corpora. The equivalent job is done per corpus instead: a term present in more than a third
+ * of the chunks carries no signal, so it neither scores nor produces a hit. That is a language-independent
+ * way to say the same thing, and it adapts to the corpus at hand rather than to English.
  */
 export function bm25(chunks, question, { k = RETRIEVAL_DEFAULTS.topK, k1 = RETRIEVAL_DEFAULTS.k1, b = RETRIEVAL_DEFAULTS.b } = {}) {
   const query = [...new Set(tokenize(question))];
@@ -136,6 +161,14 @@ export function bm25(chunks, question, { k = RETRIEVAL_DEFAULTS.topK, k1 = RETRI
       if (count) frequency.set(chunk.index, count);
     }
     if (!frequency.size) continue;
+    // A query term has to separate some chunks from others to be evidence of anything. BM25's IDF already
+    // prices a ubiquitous term at almost zero, but several near-zero weights still add up to a hit, which is
+    // how a question the corpus does not cover comes back with real sections attached: on a nine-section
+    // corpus, "what is the capital of Peru" matches on "of", because "of" appears in four of them. Scoring
+    // only terms present in at most a third of the chunks removes those matches and leaves the order of
+    // every genuinely matched chunk alone. A query with no such term returns nothing, which is the honest
+    // answer: keyword search has found no signal, and the embedding half, if it is installed, decides.
+    if (frequency.size > Math.max(1, Math.floor(chunks.length / 3))) continue;
     const idf = Math.log(1 + (chunks.length - frequency.size + 0.5) / (frequency.size + 0.5));
     for (const [index, count] of frequency) {
       const length = lengths.get(index) ?? 0;

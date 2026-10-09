@@ -16,6 +16,8 @@ import { fetchDatafileContext } from "./datafile-context.js";
 // The manifest-declared context reads live in their own DOM-free module so they can be tested without a
 // browser. Re-exported below, because host-check and the docs import them from here.
 import { contextCredentials, fetchApp, fetchField, fetchJson, fetchRecord } from "./context-read.js";
+import { buildCorpusIndex, corpusChunks, createRetrievalContext, fetchCorpus, indexCache } from "./retrieval-context.js";
+import { createEmbedder } from "../src/embedder.js";
 import { MD_CSS, renderMarkdown } from "./chat.js"; // also registers <pslm-chat>, the chat surface
 import { assistantSystemPrompt } from "./chat-core.js";
 
@@ -159,7 +161,7 @@ const TEMPLATE = `
 </div>
 `;
 
-function mount(root, { manifest, ai, version, base = window.location.origin }) {
+function mount(root, { manifest, ai, version, base = window.location.origin, assets }) {
   root.innerHTML = TEMPLATE;
   // Two declarations decide everything the panel can do: a manifest (authorized reads) and a record
   // id (which record). Neither is needed to mount — see mountMode() for the ladder.
@@ -210,7 +212,7 @@ function mount(root, { manifest, ai, version, base = window.location.origin }) {
     : "";
   // Context-source disclosure lives in the status chip's hover, not as a permanent bar element:
   // the claim stays checkable without occupying the widget.
-  const sourceNotice = mode.context === "app"
+  let sourceNotice = mode.context === "app"
     ? "source: application help text (no record on this page — answers come from the application's own help text, not your data)"
     : mode.context === "record"
       ? "source: record snapshot (grounded in this record's saved data)"
@@ -371,6 +373,33 @@ function mount(root, { manifest, ai, version, base = window.location.origin }) {
       }
       return parts.join("\n\n");
     };
+  }
+
+  // A declared corpus turns the provider into a ranked read. This supersedes the whole-document
+  // providers above, because the whole point is that the byte cap stops deciding what the model sees.
+  // BM25 answers from the first question with nothing downloaded; embeddings join when they are
+  // installed. A failure here degrades to the provider that was already set, never to no context.
+  const retrieval = createRetrievalContext({
+    manifest, base,
+    storage: typeof caches === "undefined" ? null : indexCache(),
+    embedder: createEmbedder({ assets }),
+    // A warning is worth the status line. Progress is not: it would be overwritten by the next model
+    // state and the reader would lose the one durable fact, which is what the answers are drawn from.
+    onStatus: (message, level) => {
+      if (level === "warn") setState(message, "warn");
+      else {
+        // Retrieval replaces the whole-document source, so the disclosure has to stop claiming the
+        // document is the source. Naming both would be describing the old behaviour as if it were current.
+        sourceNotice = `source: retrieved from this application's own documents (${message})`;
+        $(".state").title = `${$(".state").textContent} — ${sourceNotice}`;
+      }
+    },
+  });
+  if (retrieval) {
+    chat.onContext = (question) => retrieval.onContext(question);
+    // The source of the answers is announced through onStatus, which writes the disclosure title rather
+    // than the status line: a status line would be replaced by the next model state and the fact lost.
+    retrieval.ready().catch(() => {});
   }
 
   async function refresh() {
@@ -656,7 +685,7 @@ function mount(root, { manifest, ai, version, base = window.location.origin }) {
 export async function mountFromManifest(root) {
   const { manifest, assets, version, base } = await loadConfig(root);
   const ai = createLocalSLM({ assets });
-  const panel = mount(root, { manifest, ai, version, base });
+  const panel = mount(root, { manifest, ai, version, base, assets });
   // Chrome last: it appends into the panel, so running it before the template write would have its
   // handles replaced immediately (which the observer would then fix, one re-render later).
   const detachChrome = mountChrome(root);
@@ -670,6 +699,8 @@ export {
   DECLARED_POINTERS, mountMode, validateManifest,
   // Re-exported from context-read.js: these were defined here until they moved somewhere testable.
   contextCredentials, fetchApp, fetchField, fetchJson, fetchRecord, loadConfig,
+  // Retrieval, re-exported for the same reason: host-check must exercise the panel's own provider.
+  createRetrievalContext, buildCorpusIndex, fetchCorpus, corpusChunks,
 };
 
 // Auto-mount only in a browser; hosts may call mountFromManifest() themselves.
