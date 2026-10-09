@@ -287,7 +287,12 @@ export function selectUnderCap(ranked, { maxBytes = RETRIEVAL_DEFAULTS.maxBytes 
   const omitted = [];
   let used = 0;
   for (const entry of ranked) {
-    const label = entry.chunk.heading || entry.chunk.path || `chunk ${entry.chunk.index}`;
+    // Name where the section came from, not only what it is called. A reader looking at the prompt cannot
+    // otherwise tell retrieved site content from text baked into the SDK, and a section title can repeat
+    // across documents. It also lets the model do what most hosts ask of it: say which page it drew on.
+    const heading = (entry.chunk.heading || "").trim();
+    const source = (entry.chunk.path || "").trim();
+    const label = (heading && source && heading !== source ? `${heading} — ${source}` : (heading || source || `chunk ${entry.chunk.index}`)).slice(0, 120);
     const prefix = `### ${label}\n`;
     const separator = included.length ? 2 : 0;
     const cost = size(prefix) + size(entry.chunk.text) + separator;

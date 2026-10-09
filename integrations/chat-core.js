@@ -14,19 +14,14 @@ const STOPWORDS = new Set(("the this that these those with from about into over 
 // have to come from somewhere, and a host that forgot to say them would leave the model to guess.
 // Treat it as part of the prompt contract: it is disclosed and grounded like any other context.
 export const DEFAULT_CONTEXT = `About this assistant
-- This assistant runs the pinned language model selected in the panel (up to ~2.6B parameters,
-  quantized) entirely inside this browser tab. The model can be wrong; answer clearly and say when
-  unsure. It is strongest on structured metadata tasks and weaker on long nuanced prose.
-- For general questions, answer from the model's general knowledge. Do not refuse just because the
-  answer is absent from application context.
-- For facts about the current application or project, rely on context the host supplied or results
-  returned by an available tool. If neither contains the fact, say you cannot verify it; never invent
-  a saved value.
-- When you ask a question, the host may fetch context from its declared endpoint. A declared tool
-  can make an additional read request and shows its arguments for separate approval. Model downloads
-  and host requests contact their declared endpoints; do not claim no network activity occurred.
-- You cannot inspect the page, screen, selection, other tabs, or unsaved form values unless the host
-  explicitly supplies them. You cannot save, publish, delete, or change data; never claim to do so.`;
+- This assistant runs a quantized language model entirely inside this browser tab. The model can be
+  wrong: answer clearly, and say when you are unsure.
+- Answer general questions from your own knowledge. Do not refuse just because the supplied text does
+  not cover it.
+- Facts about this application come from the supplied text or from a tool's result. If neither has the
+  fact, say you cannot verify it rather than inventing a value.
+- You cannot inspect the page, screen, selection, other tabs, or unsaved form values unless they are
+  supplied here. You cannot save, publish, delete, or change anything; never claim that you did.`;
 
 /**
  * Compose the context a turn is grounded in: the SDK's own description first, then whatever the host
@@ -43,7 +38,7 @@ export function assistantSystemPrompt({ app = "this application", context = "non
   // application, but the material to answer questions about. The difference matters most in what happens
   // when the answer is absent — help text invites general guidance, content should be answered from the
   // document or plainly declined. Without it the model offers to help, which reads as a deflection.
-  if (context === "app" && kind === "content") return `${opening} The supplied text is the material to answer from: answer the question that was asked, using it, and do not end by asking the user what they want or offering to help. If the text does not cover the answer, say that plainly rather than filling the gap from general knowledge. You have not read a project or user data, and you cannot open, save, publish, or change anything.`;
+  if (context === "app" && kind === "content") return `${opening} The supplied text is the material to answer from: answer the question that was asked, using it, and do not end by asking the user what they want or offering to help. If it does not cover the answer, say that plainly rather than filling the gap from general knowledge. Name the document or section you drew on. You have read nothing beyond the supplied text, and you cannot open, save, publish, or change anything.`;
   if (context === "app") return `${opening} For questions about how to use ${app}, use the supplied help text; if it does not cover the answer, say so, then offer general guidance clearly labeled as such. You have not read a project or user data. Never claim to open, save, publish, or change a record.`;
   return `${opening} You have not read this application's page or any project data. Do not claim to have opened, saved, published, or changed anything.`;
 }
@@ -61,13 +56,28 @@ export function routesDirect(question) {
 /** Direct-route turns get a brief reply; the context is there if asked, not to be recited. */
 export const DIRECT_REPLY_NOTE = `The user greeted you or asked about your identity or capabilities. Reply in one or two short sentences and invite their question. Do not enumerate, list or summarize the supplied context (projects, fields, records) unless they explicitly ask.`;
 
+const BUILTIN_UTILITIES = new Set(["get_datetime", "calculate", "wiki_search"]);
+
 export function toolInstructions(tools, { lfm = false } = {}) {
   if (!tools?.length) return "";
   const list = tools.map((tool) => `- ${tool.name}: ${tool.description}`).join("\n");
   const protocol = lfm
-    ? "If a tool is needed, output exactly <|tool_call_start|>[tool_name(parameter='value')]<|tool_call_end|> using Python-like calls and schema-valid arguments; do not add prose to that tool-call response. After the result, answer normally. Check the supplied context BEFORE calling any tool: if the answer is already in it, answer directly. Use at most one tool per question unless the answer truly requires chaining. Never invent a tool result or claim a request succeeded unless it returned a result."
-    : "Use the tool-call format required by the model when a tool is needed, then answer after its result. Check the supplied context before calling any tool.";
-  return `Tool rules. Call a tool ONLY when the user explicitly asks for the exact current value of specific saved data (a named field, a count, a date/time) or asks for a calculation. Greetings, identity questions (\"what are you\"), capability questions (\"what can you do\"), opinions, and general-knowledge questions NEVER need a tool — answer those directly from your instructions and the context below. When in doubt, do not call a tool. Never invent a tool result or claim a request succeeded unless it returned a result. Available tools:\n${list}\n${protocol}`;
+    ? "To call one, output exactly <|tool_call_start|>[tool_name(parameter='value')]<|tool_call_end|> and no prose. After the result, answer normally."
+    : "Use the tool-call format required by the model when a tool is needed, then answer after its result.";
+  // A host-read tool is the case the strict rule exists for: reading a saved value the user did not ask
+  // for, or reading the wrong record, is the failure it prevents. Offline utilities alone need none of
+  // that, so a general-purpose host is not charged 270 tokens a turn for rules about data it never reads.
+  // Anything that is not one of the built-in utilities is a host's own tool, and a host's own tool reads
+  // something the user did not ask about if it misfires. Keying only on `network` was fragile: a declared
+  // tool is marked networked by buildHostTools today, but a host that writes its own tool need not know.
+  const readsHostData = tools.some((tool) => tool.network || !BUILTIN_UTILITIES.has(tool.name));
+  const network = readsHostData
+    ? " A networked tool contacts its declared endpoint, so do not claim that no network activity occurred."
+    : "";
+  const rules = readsHostData
+    ? "Call a tool ONLY when the user explicitly asks for the exact current value of specific saved data (a named field, a count, a date/time) or asks for a calculation. Greetings, identity questions, capability questions, opinions and general-knowledge questions never need one. When in doubt, do not call a tool."
+    : "Call a tool only when the answer needs one: a current date or time, or a calculation.";
+  return `Tool rules. ${rules} Check the supplied text first: if the answer is already in it, answer directly. Never invent a tool result, and never claim a request succeeded unless it returned one.${network}\nAvailable tools:\n${list}\n${protocol}`;
 }
 
 export function composeContext(hostText) {

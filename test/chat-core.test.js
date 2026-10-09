@@ -77,9 +77,9 @@ test("the shipped context is always present and hosts can only append to it", ()
 
   // The shipped block is what keeps the honesty claims answerable, so it must actually say them.
   assert.match(DEFAULT_CONTEXT, /cannot inspect the page/);
-  assert.match(DEFAULT_CONTEXT, /never claim to/);
-  assert.match(DEFAULT_CONTEXT, /For general questions, answer from the model's general knowledge/);
-  assert.match(DEFAULT_CONTEXT, /never invent\s+a saved value/);
+  assert.match(DEFAULT_CONTEXT, /never claim that you did/);
+  assert.match(DEFAULT_CONTEXT, /Answer general questions from your own knowledge/);
+  assert.match(DEFAULT_CONTEXT, /rather than inventing a value/);
 
   // An answer lifted from the shipped block is grounded, not invented — "I cannot save anything"
   // used to read as ungrounded on a chat with no host.
@@ -113,7 +113,7 @@ test("tool prompt names available tools and sets expectations without suppressin
     { name: "read_project_field", description: "Read exact saved field value." },
     { name: "calculate", description: "Calculate arithmetic." },
   ]);
-  assert.match(prompt, /NEVER need a tool/);
+  assert.match(prompt, /never need one/);
   assert.match(prompt, /When in doubt, do not call a tool/);
   assert.match(prompt, /read_project_field: Read exact saved field value/);
   assert.match(prompt, /calculate: Calculate arithmetic/);

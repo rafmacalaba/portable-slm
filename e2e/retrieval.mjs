@@ -191,7 +191,7 @@ try {
     }, question);
 
     const first = await ask("house_hold_id");
-    check(`[${label}] an identifier is retrieved and labelled`, /^### Identifiers\n[\s\S]*house_hold_id/.test(first.context));
+    check(`[${label}] an identifier is retrieved and labelled`, /^### Identifiers[^\n]*\n[\s\S]*house_hold_id/.test(first.context));
     check(`[${label}] the context is a selection, not the document`, (first.context.match(/^### /gm) || []).length < 8);
 
     const semantic = await ask("how long before I can read it");
