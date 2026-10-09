@@ -215,3 +215,12 @@ test("an app document declared as content gets an instruction to answer, not to 
   // The default stays the help-text wording: a manifest that says nothing keeps its current behaviour.
   assert.equal(assistantSystemPrompt({ app: "My Site", context: "app" }), help);
 });
+
+test("the transcript has a way to re-pin after content grows", async () => {
+  // The bug: following on every token is not enough, because the final markdown render and the provenance
+  // line make the answer taller after the last scroll. Asserted at the source level, because the behaviour is
+  // a browser layout effect and the suite has no DOM.
+  const source = await import("node:fs").then((fs) => fs.readFileSync(new URL("../integrations/chat.js", import.meta.url), "utf8"));
+  assert.match(source, /ResizeObserver/, "a growth observer is what catches a late height change");
+  assert.match(source, /#sizer\.observe\(el\)|#sizer\?\.observe|#watch\(/, "observers must be attached to the elements that grow");
+});

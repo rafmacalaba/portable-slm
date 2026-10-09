@@ -212,6 +212,7 @@ export class PslmChat extends HTMLElement {
   #contextProvider = null;
   #sentText = "";
   #stick = true;
+  #sizer = null;
 
   constructor() {
     super();
@@ -266,6 +267,21 @@ export class PslmChat extends HTMLElement {
     if (!log) return;
     if (force) this.#stick = true;
     if (this.#stick) log.scrollTop = log.scrollHeight;
+  }
+
+  /**
+   * Re-pin when the transcript grows for a reason other than a new token.
+   *
+   * Following on every token is not enough: the final markdown render replaces the streamed text, and the
+   * provenance and completeness lines are appended afterwards, so the answer gets taller after the last
+   * `#logTo()` and the tail of it sits below the visible box. Measured: a 600-word answer settled 16 px short
+   * of the bottom, with its last line off screen. An observer on each bubble catches whatever grows later
+   * instead of my having to find every place that mutates one.
+   */
+  #watch(el) {
+    if (typeof ResizeObserver === "undefined") return;
+    this.#sizer ??= new ResizeObserver(() => this.#logTo());
+    this.#sizer.observe(el);
   }
 
   #render() {
@@ -432,6 +448,7 @@ export class PslmChat extends HTMLElement {
     div.dataset.role = role;
     div.textContent = text;
     this.$("[part=log]").append(div);
+    this.#watch(div);
     this.#logTo(role === "user"); // a message the user just sent always brings the view with it
     return div;
   }
