@@ -47,6 +47,47 @@ policy. Editor-to-NADA publishing remains the host's existing workflow. See the
 
 ## Components and boundaries
 
+The dependency direction is the rule: `src/` imports nothing from `integrations/`, and `integrations/` imports
+from `src/`. That is what keeps the base reusable by a host written later, and it is the first thing to check
+in a review.
+
+```mermaid
+flowchart TB
+  subgraph integrations["integrations/ — knows a host; never an application's internals"]
+    EMB["embed.js<br/><small>composition root: manifest → mount → tools → context</small>"]
+    CHAT["chat.js<br/><small>&lt;pslm-chat&gt;, shadow DOM</small>"]
+    CORE["chat-core.js<br/><small>prompt assembly · markdown · grounding · routing</small>"]
+    HOSTC["host-contract.js<br/><small>manifest · caps · tool builder · LEAF, no imports</small>"]
+    CR["context-read.js<br/><small>app · record · field reads</small>"]
+    DF["datafile-context.js<br/><small>paged variable inventory</small>"]
+    MR["metadata-review.js<br/><small>tasks (suggest-field …)</small>"]
+    MC["metadata-context.js<br/><small>NADA / Editor legacy adapters</small>"]
+    W["metadata-widget.js<br/><small>mountable read-only widget</small>"]
+    LOG["logging.js<br/><small>event → host endpoint</small>"]
+  end
+  subgraph src["src/ — base; no DOM, no host, testable without a browser"]
+    IDX["index.js<br/><small>createLocalSLM: status · download · import · load · generate · runAgent</small>"]
+    AG["agent.js<br/><small>tool loop: validate · consent · cap · digest · 5 calls</small>"]
+    CMP["completeness.js<br/><small>is this an answer?</small>"]
+    ST["store.js<br/><small>OPFS · chunks · SHA-256</small>"]
+    MOD["models.js<br/><small>pinned catalog</small>"]
+    TE["transformers-engine.js<br/><small>ONNX + WebGPU</small>"]
+    LO["lfm-output.js<br/><small>think split · tool parsing · window fit</small>"]
+    TL["tools.js<br/><small>offline utilities</small>"]
+  end
+  EMB --> CHAT & CORE & HOSTC & CR & DF & MR & LOG
+  CHAT --> CORE
+  CR --> HOSTC
+  DF --> HOSTC
+  MR --> HOSTC & CORE
+  W --> MR & MC
+  EMB --> IDX
+  IDX --> AG & ST & MOD & TE & TL
+  AG --> CMP
+  TE --> ST & LO & MOD
+```
+
+
 | Component | Path | Responsibility |
 |---|---|---|
 | Engine and model vault | `src/index.js`, `src/transformers-engine.js`, `src/store.js`, `src/models.js` | Verify/download/import weights, load one model, generate text, delete/unload; no DOM or host knowledge |

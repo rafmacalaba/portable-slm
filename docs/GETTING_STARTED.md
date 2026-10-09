@@ -8,6 +8,36 @@ Everything here is a **read-only** integration. The assistant reads a snapshot y
 text; your application keeps validation, saving and publishing. There is no cloud inference, no API key,
 no telemetry, and no path from the model to a write API.
 
+## One turn, end to end
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant P as your page
+  participant E as embed.js
+  participant C as chat.js
+  participant A as agent loop
+  participant M as the model (in this tab)
+  P->>E: the mount div + the manifest
+  E->>E: validateManifest · mountMode
+  Note over E: a bad contract fails the MOUNT, never the conversation
+  P->>C: ask a question
+  C->>P: onContext(question)
+  P-->>C: the text you allow, capped
+  C->>C: composeContext + buildMessages
+  Note over C: SDK description first, your text appended, history trimmed
+  C->>A: tools declared? then runAgent, else generate
+  A->>P: declared tool call (same-origin GET, capped, approved)
+  A->>M: prompt, seeded thinking
+  M-->>C: streamed answer
+  C->>P: pslm-answer + completeness + grounding verdicts
+  P->>P: your form, only on a human click
+```
+
+Everything left of the `onContext` line is yours; everything between it and the answer is the SDK's. If you
+remember one thing from this page: **the SDK decides how a string becomes a prompt, and you decide what the
+string is.**
+
 ## What a host gets, and what it must give
 
 | the SDK provides | your application provides |

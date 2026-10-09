@@ -5,6 +5,34 @@ SHA-256-verified model into the browser, streams answers locally, runs bounded t
 context from a single host-supplied callback. There is no cloud inference endpoint, no telemetry and
 no path from the assistant to a host write API.
 
+The seam is one line. A host declares what may be read and answers one callback; everything else is the
+SDK's:
+
+```mermaid
+flowchart TB
+  subgraph host["your application"]
+    direction LR
+    D["manifest<br/><small>pslm-host/1: endpoints, caps, tasks, tools</small>"]
+    M["mount<br/><small>&lt;div data-pslm&gt; + CSS</small>"]
+    B["bindings<br/><small>form input · log endpoint</small>"]
+  end
+  subgraph sdk["portable-slm"]
+    direction LR
+    H["harness<br/><small>embed.js · chat.js · host-contract.js</small>"]
+    R["runtime<br/><small>store · engine · agent loop</small>"]
+  end
+  D -->|"declares what may be read"| H
+  H -->|"onContext(question) → text"| M
+  H -->|"events: answer · error · tool · suggest"| M
+  H -->|"pslm-fill-request (cancelable)"| B
+  H --> R
+  R -->|"answers, verdicts, provenance"| H
+  H -.->|"no write path, ever"| host
+```
+
+The runtime never leaves the browser: weights are verified once per origin, inference is local, and the only
+requests are the context reads you declared and the mirror you named.
+
 The package is layered so a host can adopt as little as it wants:
 
 | Layer | Artifact | What it is |
@@ -32,6 +60,39 @@ Three pages ship in the bundle and need no build step of their own: `chat.html` 
 surface), `host-check.html` (run the acceptance checks on your own origin) and
 `framework-options.html` (compare implementation approaches — vanilla custom element, lit, Stencil,
 React, Vue, Svelte — and read the recommendation).
+### The documents, by kind
+
+**Contracts** — normative. A host implements these, and `host-check.html` verifies them.
+
+| document | what it fixes |
+|---|---|
+| [HOST_CONTRACT.md](docs/HOST_CONTRACT.md) | the `pslm-host/1` manifest, the context sources, the tasks, the acceptance definition |
+| [CHAT.md](docs/CHAT.md) | the element's attributes and the events a host may rely on |
+| [LOGGING / §logging](docs/HOST_CONTRACT.md#logging) | the optional log endpoint a host implements |
+| [TOOLS.md](docs/TOOLS.md) | what a tool may be, and the limits the loop enforces |
+
+**Guides** — how to build with it.
+
+| document | read when |
+|---|---|
+| [GETTING_STARTED.md](docs/GETTING_STARTED.md) | integrating into an application, from zero, with diagrams |
+| [CONTEXT_PROVIDERS.md](docs/CONTEXT_PROVIDERS.md) | deciding where answers come from: the five-rung ladder, and where to stop |
+| [ADDONS.md](docs/ADDONS.md) | extending the harness: the six extension points and what each owes |
+| [ARCHITECTURE.md](docs/ARCHITECTURE.md) | how the layers fit, and why the boundaries are where they are |
+| [HARNESS.md](docs/HARNESS.md) | what is enforced in code rather than asked for in a prompt |
+| [ANSWER_QUALITY.md](docs/ANSWER_QUALITY.md) | making answers good: corpus, retrieval, evaluation, and the bounded-context arithmetic |
+| [AGENT.md](docs/AGENT.md) | agent modes, engine choice, model pins, MCP and search boundaries |
+| [HOST_INTEGRATION.md](docs/HOST_INTEGRATION.md) | the two worked integrations, end to end |
+| [AGENTS.md](AGENTS.md) | working **in this repository**: invariants, module map, how to verify a change |
+
+**Status** — what is proven, and what is not. Read before trusting any of the above.
+
+| document | what it records |
+|---|---|
+| [IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md) | status, release gates, the gated retrieval follow-up |
+| [DEVICE_VALIDATION.md](docs/DEVICE_VALIDATION.md) | what has been run on which device, and what has not |
+| [LAPTOP_PILOT.md](docs/LAPTOP_PILOT.md) | the first real workflow, on real hardware |
+
 - [Chrome extension guide](integrations/chrome-extension/README.md)
 - [Metadata consumer example](examples/README.md)
 - [Implementation status and next steps](docs/IMPLEMENTATION_PLAN.md)

@@ -16,6 +16,20 @@ each one costs, and — the part that decides whether answers are good — **whe
 
 ## The ladder
 
+```mermaid
+flowchart TB
+  R0["rung 0 — the SDK's own description<br/><small>always on · 244 tokens · the reason a bare mount is honest, not blank</small>"]
+  R1["rung 1 — context.app<br/><small>one bounded document · a help page or a content digest</small>"]
+  R2["rung 2 — context.record<br/><small>a snapshot per question, behind your session and ACL</small>"]
+  R3["rung 3 — field · datafile · tools<br/><small>narrow reads on demand, from an allowlist</small>"]
+  R4["rung 4 — onContext(question)<br/><small>a ranked read of your own corpus, inside the seam</small>"]
+  R5["rung 5 — SDK-provided retrieval<br/><small>not built · gated on rung 4 measurably failing</small>"]
+  R0 --> R1 --> R2 --> R3 --> R4 --> R5
+  R4 -.->|"no SDK change needed"| R4
+  R5 -.->|"a second pinned artifact"| R5
+```
+
+
 | rung | mechanism | declared as | who owns the budget | enough when |
 |---|---|---|---|---|
 | **0** | the SDK's own description | always on | SDK | always. It is what makes the assistant honest about its limits |
