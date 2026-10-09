@@ -88,7 +88,8 @@
     "build:embed": "vite build --config vite.embed.config.js && vite build --config vite.chat.config.js && vite build --config vite.logging.config.js && node tools/embed-assets.mjs && node tools/version-stamp.mjs",
     "pack:site": "node tools/site-pack.mjs",
     "scaffold": "node tools/scaffold.mjs",
-    "e2e:retrieval": "npm run build:embed && node e2e/retrieval.mjs"
+    "e2e:retrieval": "npm run build:embed && node e2e/retrieval.mjs",
+    "eval:retrieval": "node tools/eval-retrieval.mjs"
   },
   "devDependencies": {
     "puppeteer-core": "^25.12.0",

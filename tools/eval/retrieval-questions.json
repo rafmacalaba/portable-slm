@@ -1,0 +1,39 @@
+{
+  "note": "Questions with the document that answers them. Edit freely; the script measures, it does not judge. `paraphrase` questions are checked for token overlap with their target so a question that is not actually a paraphrase cannot flatter the result.",
+  "corpus": "the site's public/portable-slm/corpus directory",
+  "excludedFromIndex": "about.md is the always-present application description, so it is not ranked",
+  "term": [
+    ["what did he build for agent orchestration", ["work/armada.md", "writing/armada-intro.md"]],
+    ["how does armada decide a phase is finished and what evidence does it need", ["writing/armada-intro.md", "work/armada.md"]],
+    ["what is GLiNER used for", ["work/gliner.md"]],
+    ["tell me about the data360 chatbot", ["work/data360-chatbot.md"]],
+    ["what is the data360 mcp server", ["work/data360-mcp.md"]],
+    ["what is fastquant", ["work/fastquant.md"]],
+    ["what is proof-carrying numbers", ["work/pcn.md"]],
+    ["what is phoenix about", ["work/phoenix.md"]],
+    ["what is ai4data", ["work/ai4data.md"]],
+    ["what is he working on now", ["now.md"]],
+    ["has he written about synthetic data for dataset mentions", ["writing/arxiv-2502-10263.md"]],
+    ["paper about field order and permutation invariance", ["writing/arxiv-2606-30473.md"]],
+    ["does he have a climate change paper", ["writing/climate-change-ai-iclr2025.md"]],
+    ["tracking dataset use at scale", ["writing/wb-tracking-dataset-use.md"]],
+    ["monitoring and classifying data used in research", ["writing/arxiv-2605-30582.md"]]
+  ],
+  "paraphrase": [
+    ["a supervisor that halts progress until the required proof is handed over", ["writing/armada-intro.md"]],
+    ["software that stops assistants from clobbering one another's edits", ["writing/armada-intro.md"]],
+    ["which of his projects recognises proper nouns in documents", ["work/gliner.md"]],
+    ["a conversational interface onto a statistical platform", ["work/data360-chatbot.md"]],
+    ["did he publish anything about global warming", ["writing/climate-change-ai-iclr2025.md"]],
+    ["does he study how often datasets get cited or reused", ["writing/wb-tracking-dataset-use.md"]],
+    ["why the sequence of columns in a table should not change the outcome", ["writing/arxiv-2606-30473.md"]],
+    ["his work on guarantees attached to numeric results", ["work/pcn.md"]],
+    ["making quantitative investing research quicker", ["work/fastquant.md"]],
+    ["a paper about fabricating records to find where data is named", ["writing/arxiv-2502-10263.md"]]
+  ],
+  "offCorpus": [
+    "what is the capital of Peru", "how do I bake sourdough", "who won the 1998 world cup",
+    "explain quantum tunnelling", "price of copper today", "how do I fix a leaking tap",
+    "best pizza in Rome", "how do I train for a marathon"
+  ]
+}

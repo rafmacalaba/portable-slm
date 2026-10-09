@@ -175,6 +175,32 @@ top few. The unit tests cover chunking, tokenizing, BM25 weighting, the hybrid w
 serialization round trip; they cannot tell you whether your corpus ranks well, which is why the last step
 matters.
 
+## Measuring it
+
+`npm run eval:retrieval -- <corpus-dir>` scores retrieval against
+`tools/eval/retrieval-questions.json`: questions with the document that answers each, in three groups, plus a
+check that the paraphrase questions do not share content tokens with their targets, so a question that is not
+really a paraphrase cannot flatter the result.
+
+On the worked site's corpus (16 documents, 35 chunks, the application description excluded because it is always
+supplied), it produced this, and the `minSimilarity` setting comes from it:
+
+| setting | term top-1 | paraphrase top-1 / top-3 | off-corpus returning sections (0 is correct) |
+|---|---|---|---|
+| keyword only | 15/15 | 4/10 / 5/10 | 1/8 |
+| hybrid, floor 0.10 | 15/15 | 5/10 / 7/10 | **6/8** |
+| hybrid, floor 0.20 | 15/15 | 5/10 / 6/10 | 2/8 |
+| **hybrid, floor 0.30** | 15/15 | 5/10 / 6/10 | **1/8** |
+
+Read it as: the semantic half rescues genuinely paraphrased questions, which keyword search cannot find at all,
+and it also invents weak matches for questions the corpus does not cover. The floor is what trades one against
+the other, and 0.10 was too low: it answered six of eight unrelated questions with sections. At 0.30 the hybrid
+is better than keyword search on every column.
+
+Two things this does not measure: whether the *answer* is good, which needs a generator model and a browser,
+and the floor for a corpus other than this one. The catalogue's default is 0.18 and a host should measure its
+own, which is why the manifest can set it.
+
 ## What is built
 
 Retrieval is the default when a host declares a corpus, and the default embedder is bundled, so a host that
