@@ -74,13 +74,33 @@
     const { manifest, assets, version, here, base } = config;
     if (!manifest) {
       $("report").textContent = `No host manifest at ${declared || "./portable-slm.host.json"}.\n\n`
-        + "That is a supported mode — a page with no manifest mounts the plain assistant and says it "
-        + "is ungrounded (HOST_CONTRACT.md §1b). There is nothing here to accept: no endpoints, no byte "
-        + "caps and no task allowlist have been declared. Serve a pslm-host/1 manifest and re-run.";
+        + "That is a supported mode — a page with no manifest mounts the plain assistant and says it is\n"
+        + "ungrounded (HOST_CONTRACT.md §1b). There is nothing to accept: no endpoints, no byte caps and\n"
+        + "no task allowlist declared. But rung 0 is not the end of the ladder, and this page is where you\n"
+        + "decide how far to climb (CONTEXT_PROVIDERS.md):\n\n"
+        + "  rung 0  nothing declared        the SDK's own description; answers are general, and it says so\n"
+        + "  rung 1  context.app             one bounded document — a help page, a content digest\n"
+        + "  rung 2  context.record          a snapshot of the object on screen, behind your own session\n"
+        + "  rung 3  field / datafile / tools  narrow reads the model asks for, from an allowlist\n"
+        + "  rung 4  onContext(question)     a ranked read of your own corpus, inside the seam\n\n"
+        + "Serving a pslm-host/1 manifest moves you to rung 1 or 2, and every check on this page starts\n"
+        + "meaning something. `npm run scaffold -- --shape static|record` writes one that already passes.";
       return;
     }
+
     const model = manifest.model || DEFAULT_MODEL;
     const sid = $("sid").value.trim();
+    // Which rung the host is on, stated rather than implied by which checks happen to skip.
+    await check(rows, "context rung", () => {
+      const rungs = [];
+      if (manifest.context?.app?.url) rungs.push("1 · context.app");
+      if (manifest.context?.record?.url) rungs.push("2 · context.record");
+      if (manifest.context?.field?.url || manifest.context?.datafile?.url || manifest.tools?.length) rungs.push("3 · narrow reads");
+      const name = rungs.join(" + ") || "0";
+      // Rung 4 cannot be seen from a manifest: it lives in the host's own onContext. Say so rather than
+      // implying that a manifest-declared rung is the ceiling.
+      return { warn: `rung ${name} — rung 4 (a ranked read inside onContext) is invisible from here, and is where a corpus past the cap belongs` };
+    });
 
     await check(rows, "build stamp", () => {
       if (!version) return { warn: "no version.json — host is serving a bundle older than this build" };

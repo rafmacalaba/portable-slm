@@ -56,6 +56,11 @@ thing on a page you fully control.
 | One object with a form: a record editor, a CRM entry | `record` | `context.record`, `context.field`, one read tool | chat, a Suggest tab, and *Fill this field* |
 | Many objects and files | build on `record` | add `context.datafile` (+ `pslm.suggest-datafile-description`) | as above, plus data-file drafts. Not scaffolded: see the Metadata Editor reference integration |
 
+Those are the ladder's rungs 1–3. Rung 4 — a **ranked read of your own corpus inside `onContext(question)`** —
+is what you climb to when the content outgrows `maxBytes`, and it needs no SDK change. The stopping rule,
+the corpus shape and the three rules retrieval must not violate are in
+[CONTEXT_PROVIDERS.md](CONTEXT_PROVIDERS.md).
+
 `static` is not a cut-down version of the others — it is the honest shape for a host with no API. Satisfy
 this one first; every later level is additive.
 
@@ -127,7 +132,7 @@ first check is that stamp.
 | [CHAT.md](CHAT.md) | attributes, events, theming, the answers' provenance and completeness |
 | [HOST_INTEGRATION.md](HOST_INTEGRATION.md) | the two worked integrations and the bundled-pilot deployment |
 | [TOOLS.md](TOOLS.md) | authoring a tool, network policy, what the limits are |
-| [CONTEXT_PROVIDERS.md](CONTEXT_PROVIDERS.md) | how a host feeds context, and the ownership seam in detail |
+| [CONTEXT_PROVIDERS.md](CONTEXT_PROVIDERS.md) | **where context comes from**: the five-rung ladder, when to stop climbing, and the ownership seam in detail |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | how the pieces fit and why the boundaries are where they are |
 | [ANSWER_QUALITY.md](ANSWER_QUALITY.md) | making answers good: corpus, retrieval, evaluation, and what makes them worse |
 | [AGENT.md](AGENT.md) | agent modes, engine choice, model pins, MCP and search boundaries |

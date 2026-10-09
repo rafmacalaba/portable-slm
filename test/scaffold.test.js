@@ -62,3 +62,25 @@ test("the emitted files are the four a host needs, and the checklist names the h
   // Every file is non-trivial: an empty starter is worse than none.
   for (const [name, body] of Object.entries(files)) assert.ok(body.length > 200, `${name} looks empty`);
 });
+
+test("the checklist names the rung it starts on, and covers the one above", () => {
+  // The ladder has to be visible from inside the starter, or a host never learns there is a rung above the
+  // one it landed on — which is how a corpus outgrows a byte cap silently.
+  const static_ = starterFiles("static", { name: "App", out: "/tmp/x" })["STARTER.md"];
+  const record = starterFiles("record", { name: "App", out: "/tmp/x" })["STARTER.md"];
+  assert.match(static_, /starting on \*\*rung 1\*\*/);
+  assert.match(record, /starting on \*\*rung 2\*\*/);
+  for (const [shape, raw] of [["static", static_], ["record", record]]) {
+    // The markdown is wrapped, so match against unwrapped text: a phrase that spans a line break is not a
+    // missing sentence, and asserting on wrapped output is how a passing doc test starts failing on reflow.
+    const body = raw.replace(/\s+/g, " ");
+    assert.match(body, /outgrows the cap \(rung 4\)/, `${shape}: rung 4 guidance missing`);
+    // The three rules retrieval must not violate, and the measurement that gates a ranker.
+    assert.match(body, /the cap is still the cap/);
+    assert.match(body, /the disclosure shows the chunks that were chosen/);
+    assert.match(body, /rank is your code, and it is testable/);
+    assert.match(body, /golden set/);
+    // And the reason retrieval lives at the seam at all.
+    assert.match(body, /onContext receives the QUESTION/);
+  }
+});

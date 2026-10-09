@@ -187,6 +187,10 @@ authoritative contracts are linked at the bottom.
 | \`host.html\` | a working mount, two elements and one script tag |
 | \`STARTER.md\` | this page |
 
+You are starting on **rung ${shape === "record" ? "2" : "1"}** of the context ladder (rung 0 is always on).
+The section *When your document outgrows the cap* at the bottom covers rung 4, which is where retrieval
+belongs and needs no SDK change.
+
 ## Six steps
 
 1. **Pack the bundle into this directory.** From a portable-slm checkout:
@@ -210,6 +214,35 @@ authoritative contracts are linked at the bottom.
    contract violation, a \`skip\` is something you have not declared yet. Paste the report into the ticket.
 6. **Check the traps** below before you ship.
 ${recordSteps}
+## When your document outgrows the cap (rung 4)
+
+The starter declares **rung 1** (\`context.app\`, one bounded document) or **rung 2** (\`context.record\`, a
+snapshot per question). The ladder has more rungs above those, and the SDK does not need to change for any
+of them - see [CONTEXT_PROVIDERS.md](https://github.com/rafmacalaba/portable-slm/blob/main/docs/CONTEXT_PROVIDERS.md).
+
+**Check before you climb.** \`maxBytes\` is a correctness control, and truncation keeps the **head** and
+drops the **tail**. If your document sits near the cap, reorder it before you re-architect it: durable facts
+first, long or volatile content last.
+
+**If the corpus genuinely exceeds it**, stop pasting and start selecting, inside the seam you already have:
+
+\`\`\`js
+// onContext receives the QUESTION, which is what makes per-question retrieval possible at all.
+const index = await (await fetch("/pslm.index.json")).json();   // [{ id, path, text, url, version }]
+chat.onContext = async (question) => {
+  const hits = rankChunks(index, question).slice(0, 6);
+  return hits.map((h) => "### " + h.path + "\n" + h.text).join("\n\n");
+};
+\`\`\`
+
+Keyword scoring (BM25/TF-IDF, roughly 80 lines, no dependency, no model) comes before embeddings:
+deterministic, offline, and at documentation scale the auditable choice rather than the weak one. Three
+rules it must not violate - **the cap is still the cap**; **the disclosure shows the chunks that were
+chosen**, not the corpus they came from; **rank is your code, and it is testable**.
+
+Build the ruler before the machine: a small golden set that includes questions your corpus cannot answer.
+The abstention rate on those is the number that matters most.
+
 ## Traps that cost real time
 
 - **Model bytes are per browser origin and never leave it.** A model installed on \`localhost:8080\` is not

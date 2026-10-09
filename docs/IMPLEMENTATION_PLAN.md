@@ -77,6 +77,22 @@ Extension access and a separate local server are not dependencies.
 uses an unpacked desktop extension in an **approved developer environment**; it must not be
 used to bypass managed Chrome policy.
 
+## Follow-up: retrieval (rung 5), gated
+
+`docs/CONTEXT_PROVIDERS.md` defines the context ladder: rung 0 the SDK's own description, 1 `context.app`,
+2 `context.record`, 3 narrow declared reads, 4 a ranked read inside `onContext(question)`, 5 SDK-provided
+retrieval. **Rungs 0–4 are implemented and need no further SDK surface**; rung 4 is the documented
+extension point and already receives the question.
+
+Rung 5 is deliberately not started. The project's rule is *embeddings only after keyword scoring measurably
+fails*, and the trigger is written down: keyword ranking misses answers a human finds by paraphrase on a
+meaningful share of the golden set, **and** the miss is recall rather than the byte cap.
+
+**No embedder is chosen.** The intended source is the client-side model set, to be decided after rung 4 is
+exercised on a real corpus. When it is decided, this is the shape it has to take: a pinned revision with
+SHA-256 in `src/models.js`, a feature-extraction runtime path alongside the existing text one, a vector
+cache keyed by corpus version, and a decision about where search runs. Do not add it ahead of the trigger.
+
 ## Current blockers and validation status
 
 - **Harness hardening (step 1):** model chunks are resumable and SHA-verified; app shell and model
