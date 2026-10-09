@@ -141,8 +141,8 @@ async function task(fn, failPrefix) {
   return true;
 }
 
-// HF resets its outer iframe after link clicks. In its embed, use buttons that only mount
-// consumers in this document: one origin, one model instance, no page navigation.
+// Inside a frame, use buttons that mount consumers in this document instead of links: one origin, one
+// model instance, no page navigation.
 const embedded = window.top !== window.self;
 let activeView = null;
 let openingView = false;

@@ -66,6 +66,42 @@ did not yet say. What was learned went upstream; what was specific stayed here.
 That last row is the rule these examples exist to demonstrate: **the SDK never learns an application's
 routes, and an application never learns the SDK's prompt template.**
 
+## How one host wired it, in files
+
+The whole change in the record editor was a route and a view, not new business logic: its API already
+exposed what the panel needed, with `exclude_private_fields=1` doing the hiding, so the manifest just named
+the two endpoints.
+
+```
+portable-slm/                                      # L0: dist/ copied or bind-mounted
+portable-slm/portable-slm.host.json                # L1: the manifest above
+application/views/metadata_editor/pslm_panel.php   # L2: ~10 lines of markup, plus geometry and palette
+vue-app/assets/pslm-fill.js                        # L2: the "Fill this field" listener
+```
+
+It is switched off unless the host turns it on:
+
+```php
+$config['editor']['portable_slm_enabled'] = (getenv('EDITOR_PORTABLE_SLM') === '1');
+```
+
+An integration a host can switch off is one a host will accept.
+
+Two things it learned that are worth copying:
+
+- **A route can be documented in a spelling the framework does not accept.** The published specification
+  used `json-field`, and the framework handed that literal word to the controller as an id, so every field
+  read failed with `IDNO-NOT-FOUND: json-field`. The manifest had inherited the specification's spelling,
+  and nothing noticed until the acceptance page fetched a declared pointer end to end. A route mapping made
+  both spellings work. The guard against the class is the acceptance page's `context.field resolves for a
+  declared pointer` row: a declared endpoint must answer before a host is accepted.
+- **A view that reads an id from its parent view silently renders nothing.** The framework gives each loaded
+  view its own scope, so the record id had to be passed down explicitly. The symptom was an empty
+  `data-record-id`, which looks like a missing record rather than a missing argument.
+
+The deployment note: the bundle, the manifest and any model mirror are separate read-only mounts rather than
+nested paths, because a container runtime cannot create a mount point inside a read-only bind mount.
+
 ## Running what is here
 
 ```sh
@@ -83,7 +119,7 @@ npm run dev        # /                    chat and model manager
 - `../demo/catalogue-qa-view.js` — the evidence-checked Q&A view: it asks the model for a verbatim quote
   and checks that the quote occurs in the snapshot it sent.
 
-## The laptop pilot, as it was run
+## Running these integrations
 
 Two paths, and the first needs no extension:
 

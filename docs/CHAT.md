@@ -88,8 +88,8 @@ chat.clear();
 chat.history;                               // read-only transcript messages
 ```
 
-Setting `chat.ai` is how a host with several surfaces avoids loading the model twice, the
-the record editor panel does exactly this, sharing one engine between chat and field suggestion.
+Setting `chat.ai` is how a host with several surfaces avoids loading the model twice: a host that offers
+chat and a suggestion view shares one engine between them.
 
 ## Events
 
@@ -150,7 +150,7 @@ attachAssistantLog(document.querySelector("[data-pslm]"), {
 ```
 
 The endpoint you implement is specified in
-[HOST_CONTRACT.md §logging](HOST_CONTRACT.md#logging): it owns identity and time, bounds the body, and
+[HOST_CONTRACT.md §8c](HOST_CONTRACT.md#8c-logging): it owns identity and time, bounds the body, and
 appends the line. Offline note: the URL and the endpoint are same-origin, and a failed log never
 surfaces in the conversation.
 
@@ -313,9 +313,8 @@ uninstalled on its next load.
 
 **One engine per document means two windows cost two copies of the model in RAM.** Sharing one engine
 across surfaces *within* a page is supported, set `chat.ai`, and there is no browser mechanism to
-make cross-tab sharing cheap. Hosts usually assume one mount per page too: the record editor's fill
-listener binds the first mount it finds and refuses a fill it cannot attribute, rather than guessing
-at the wrong form.
+make cross-tab sharing cheap. Hosts usually assume one mount per page too: a host's fill listener binds the mount it finds and refuses
+a fill it cannot attribute to a record, rather than guessing at the wrong form.
 
 ## Sizing and scrolling
 

@@ -1,7 +1,7 @@
 import { runBenchmark, summary } from "../bench/run.js";
 import { TASKS } from "../bench/tasks.js";
 
-// Same benchmark component in standalone /benchmark.html and inside the HF-embedded chat shell.
+// Same benchmark component standalone at /benchmark.html and mounted in-page by the chat shell.
 export function mountBenchmark(root, ai, { embedded = false } = {}) {
   root.innerHTML = `
     <h2>General-task benchmark</h2>

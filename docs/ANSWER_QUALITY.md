@@ -151,7 +151,7 @@ default, and let the golden set decide, never replace a model on a demo.
 `src/models.js` pins more than one model, and `benchmark.html` measures them on the machine that will
 run them. Swap `model` on the element and run your golden set against each. Expect real differences:
 the smaller model is faster and markedly worse at structured output. Choosing on someone else's
-benchmark, or on a demo, is how a pilot dies in a country office.
+benchmark, or on a demo, is how a promising deployment quietly stops being used.
 
 ## What makes answers worse
 

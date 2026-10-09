@@ -135,7 +135,7 @@ belongs in the host's manifest.
 ## 6. A log sink
 
 **Where.** `integrations/logging.js` forwards the SDK's events; the endpoint is the host's. The contract is
-HOST_CONTRACT.md §logging.
+HOST_CONTRACT.md §8c.
 
 **You owe:** an authenticated, same-origin endpoint that stamps identity and time itself, ignores any
 reserved key in the body (`ts`, `user_id`, `user`, `sess`, `ip`, `event`), bounds the body again, and picks

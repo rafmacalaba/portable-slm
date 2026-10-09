@@ -127,9 +127,8 @@ chat.onContext = async (question) => {
 ```
 
 **Corpus shape.** One section per chunk, headings kept, and a `version` stamped alongside the content so a
-cache can be keyed to it. Build it from whatever your content already is, the record editor's help text
-and this repository's own site both generate a document from source content at build time rather than
-hand-maintaining one.
+cache can be keyed to it. Build it from whatever your content already is: generating a document from the source content at build
+time beats hand-maintaining one, and both worked hosts do it that way.
 
 **Always in the window, regardless of rank:** the glossary, or the two-paragraph "what this application is".
 Cheap, and it stops the model inventing what a "study" or a "dissagregation" is.
@@ -160,7 +159,7 @@ Nothing here is a plan with a model chosen. The trigger, written down, is:
 Only then does the shape get decided: a pinned embedder from the client-side model set (the intended
 source, no default is chosen here), a feature-extraction runtime path, a vector cache keyed by corpus
 version, and a decision about where search runs. Tracked in
-[`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md) as the next step after rung 4 is exercised on a real
+[`STATUS.md`](STATUS.md) as the next step after rung 4 is exercised on a real
 corpus.
 
 ## Where to stop climbing
@@ -199,9 +198,10 @@ Two rows are the ones hosts most often get wrong. **Size**: at the seam the comp
 400 KB string into an 8 K-token window and the engine will fail opaquely. The cap is yours there, while a
 declared `maxBytes` applies it for you. **Failure message**: the component prints whatever you throw.
 
-## Worked example: the record editor
+## Worked example: rungs 2 and 3
 
-Rungs 2 and 3, in a host repository:
+A host with an API about one object. The routes are this application's own; nothing here is recognised by
+the SDK.
 
 ```json
 {
@@ -225,8 +225,10 @@ chat.onContext = async () => {
 };
 ```
 
-One measured example, a record with a data dictionary: 14 569 bytes of descriptive metadata and variable
-definitions, and never an observation row. The cap, not the query, decided what fitted.
+One measured case, a record carrying a data dictionary: 14 569 bytes of descriptive metadata and variable
+definitions, and never an observation row. The cap, not the query, decided what fitted. A host's own
+measured example, with the endpoints it really uses, is in
+[`../examples/README.md`](../examples/README.md).
 
 ## Sketch: rung 4, a content site
 
@@ -255,5 +257,5 @@ starts losing the tail.
 - [ ] at rung 4: the golden set exists, it includes unanswerable questions, and the chosen chunks are what the disclosure shows
 - [ ] tested signed out, on a record the user cannot open, and on a record that trips the cap
 
-A worked host, in the host's own repository rather than here: the record editor's side of this division is
-documented in [`examples/README.md`](../examples/README.md), under *What these hosts changed in the SDK*.
+A worked host's side of this division, in the host's own repository rather than here, is documented in
+[`../examples/README.md`](../examples/README.md).

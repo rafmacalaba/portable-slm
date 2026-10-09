@@ -1,4 +1,4 @@
-# Portable SLM architecture (MVP)
+# Portable SLM architecture
 
 Portable SLM is a **general-purpose on-device AI capability service for browser applications**.
 the two worked host integrations are worked integration examples and initial priorities, not exclusive
@@ -38,11 +38,10 @@ model weights stored per browser origin → local inference
 
 A host connector reads only data the signed-in user is allowed to access and passes a bounded
 snapshot into the local runtime. Portable SLM returns a draft; the host keeps schema validation,
-review, save and publish authority. For the current priority workflow, the record editor is where
-One host authors and validates records; the other disseminates them under its own access policy. The
-publishing step between them stays the first host's existing workflow. Both are documented, with the
-routes and manifests they use, in [`examples/README.md`](../examples/README.md). Their guides live
-with the upstream project; nothing here needs them in order to integrate the SDK.
+review, save and publish authority. The two worked hosts are an authoring tool and a catalogue, and the
+publishing step between them stays the first host's existing workflow. Both are documented, with the routes
+and manifests they use, in [`examples/README.md`](../examples/README.md); nothing here needs them in order to
+integrate the SDK.
 
 ## Components and boundaries
 
@@ -299,11 +298,10 @@ silently mid-sentence.
   the expected hash.** The model's original source is not an inference dependency.
 - An unpacked extension bundles its own JS/WASM. Model storage is under its **extension origin**.
 - Same-origin web pages share weights (`/`, `/catalogue-qa.html`, `/field-suggest.html`, `/benchmark.html`) **within the same
-  browser storage partition**. The hosted demo embeds the static app cross-origin; Chrome partitions
-  that iframe's cache from a direct static app tab. Inside the HF wrapper, catalogue Q&A, review and
-  benchmark therefore mount *in-page* using one SDK instance and one embedded cache. The HF wrapper may
-  replace its initial iframe once during hydration; wait for app status to settle before clicking.
-  A different website or extension origin needs its own model import.
+  browser storage partition**. A page embedded cross-origin is partitioned from the same app opened
+  directly, so a host that embeds one of these views should mount it in-page, sharing one SDK instance and
+  one cache, rather than framing another origin. A different website or extension origin needs its own
+  model import.
 - Browsers can evict storage or refuse a second model with `QuotaExceededError`, particularly in
   external HF iframes. UI shows approximate usage/quota, installed and partial models. On quota
   failure, existing models are retained; user explicitly removes an unused model before resuming
@@ -330,9 +328,6 @@ silently mid-sentence.
   Benchmark runs 12 general-task cases per model and compares 230M against 350M.
 - `npm run e2e:extension` with Chrome for Testing: unpacked extension imports model, calls a tool,
   restarts offline with DNS blocked and calls it again.
-- HF wrapper on desktop Chrome: after wrapper initialization, in-page review/benchmark buttons
-  open without navigating or losing the model cache. Direct URLs work separately but may have
-  different partitioned storage.
 - Wikipedia online tool was exercised in the extension with a consent prompt; public API returns
   results. Each host must permit the Wikipedia origin for online use.
 - User-confirmed stable iPhone Safari use for 230M/350M; 1.2B kills the tab. The app defaults to
@@ -340,6 +335,6 @@ silently mid-sentence.
 - A public study was fetched through a live catalog API into the catalogue Q&A and suggestion views
   UIs. The Q&A saves a short public snapshot for offline reopen and checks evidence quotes;
   unsupported quotes are flagged. The fixture locks the real response shape. This is a
-  read-only pilot, not a factual-quality endorsement.
-- Extension `activeTab`/DOM capture on live host pages, authenticated upstream deployments
-  deployments and mobile offline review/benchmark UI have **not** been verified yet.
+  read-only, and not a factual-quality endorsement.
+- Extension `activeTab` and DOM capture on live host pages, authenticated upstream deployments, and the
+  mobile offline UI have **not** been verified yet.

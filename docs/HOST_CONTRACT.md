@@ -88,7 +88,7 @@ the bundle (separate file in its own docroot, e.g. a Docker bind mount) points a
 ```json
 {
   "apiVersion": "pslm-host/1",
-  "app": { "name": "the record editor", "version": "1.2.1" },
+  "app": { "name": "Example App", "version": "1.0.0" },
   "context": {
     "app": {
       "url": "app.md",
@@ -327,7 +327,7 @@ tool.
 ```json
 {
   "task": "pslm.suggest-field",
-  "source": "the record editor",
+  "source": "Example App",
   "recordId": "6",
   "pointer": "/study_info/abstract",
   "suggestion": "…",
@@ -371,9 +371,8 @@ Implemented: two paths, both human-triggered, both leaving the write to the host
   host's store, and never saves: the text lands in an input as an unsaved edit, so `writeBack` is
   still `false` and host-side diff/review/save stays exactly as it is.
 
-the record editor's listener is `vue-app/assets/pslm-fill.js`, ~50 lines, no build step, and it has a
-runnable check: `vue-app/pslm-fill-fixture.html` (same-origin on the record editor, `pslmFillFixture()` in
-the console) drives it through Vue 2 `v-model` on a real `.field-<key>` wrapper and asserts the four
+a host's listener is a few dozen lines with no build step, and it is worth a runnable fixture: one that
+mounts a real form control and drives the handshake through the host's own model binding, asserting the
 cases below. It refuses, loudly, in a host-styled note, when the pointer's field is not on the
 current route, when the control is a controlled list or read-only, and when `recordId` is not the
 project the panel opened.
@@ -431,9 +430,9 @@ until somebody asks a question that now behaves differently. So the procedure is
    build stamp** in the panel bar: `0.1.0+<git sha>` is the only proof the bundle being served is the
    one just built. A stale mount is the most common failure this feature has, which is why the stamp
    is on screen rather than in a log. The same staleness bites the other way for files that are
-   **baked** rather than mounted: in the record editor image, `application/` (views, `routes.php`)
-   and `vue-app/` are COPY'd at build time, so a view edit does not appear in a running container and
-   `up -d` cannot fix it, rebuild, or `docker compose cp` the file and restart. This was found the
+   **baked** rather than mounted: a container image that copies the host's application code at build time
+   will not pick up a view edit, and restarting the container cannot fix it. Rebuild, or copy the single
+   file in and restart. This was found the
    hard way: a panel with a new `data-tools` attribute rendered without it.
 4. Run §7 on the host origin, signed in as a curator, with a real record id. Every row PASS, or a
    named skip you can justify out loud.
@@ -461,107 +460,36 @@ state, except cached model bytes, which are content-addressed and survive either
 This replaces the manual six-item list in `examples/README.md`, which stays as the definition of
 "accepted". The page removes the recomputation per host, not the judgement.
 
-## 8. Reference integration: the record editor
+## 8. Reference integration
 
-Editor already exposes what is needed, with **one host-side line**, a route, not new business logic:
-
-- `GET /index.php/api/editor/json/{sid}?exclude_private_fields=1` → chat context, works as served
-- `GET /index.php/api/editor/json_field/{sid}?path=<pointer>` → field context
-
-A published specification may document a route in one spelling while the framework hands that spelling to
-a controller method as a literal argument: a documented `json-field` path reached a handler that read it as
-an id and failed on every request. The manifest had inherited the specification's spelling, and the suggest
-tab would have failed on every field read — undetected, because nothing exercised it end to end until the
-acceptance page fetched a declared pointer. A route mapping made both spellings work, and the spec
-stops lying. The guard against this class of bug is the `context.field resolves for a declared
-pointer` row in `host-check.html`: a declared endpoint must answer before the page is accepted.
-
-Both are session-authenticated and enforce project ACL, so the SDK inherits exactly the signed-in
-curator's access. `.htaccess` already sets `X-Frame-Options SAMEORIGIN`, so same-origin framing and
-the manifest are allowed; cross-origin would need an explicit relaxation, which `pslm-host/1` does
-not ask for.
-
-Host-side diff, all of it optional-by-level:
-
-```
-portable-slm/                        # L0: dist/ copied or bind-mounted
-portable-slm/portable-slm.host.json  # L1: manifest above
-application/views/metadata_editor/pslm_panel.php   # L2: ~10 lines of markup
-vue-app/assets/pslm-fill.js          # L2: the "Fill this field" listener
-```
-
-```php
-<!-- L2, inside the project page, next to the existing mount point -->
-<?php if ($this->config->item('portable_slm_enabled', 'editor')): ?>
-  <?php echo $this->load->view("metadata_editor/pslm_panel.php", null, true); ?>
-<?php endif; ?>
-```
-
-`$config['editor']['portable_slm_enabled']` comes from `EDITOR_PORTABLE_SLM` and is **off unless
-set to 1**. An integration a host can switch off is one a host will accept. The panel view supplies
-`data-pslm`, `data-record-id`, `data-manifest` and the launcher button; `embed.js` mounts itself.
-
-In the local Compose stack the bundle, manifest and model mirror are bind-mounted read-only, as
-siblings rather than nested paths, because Docker cannot create a mount point inside a read-only
-bind mount:
-
-The bundle, the manifest and any model mirror are declared as separate read-only mounts rather than nested
-paths, because a container runtime cannot create a mount point inside a read-only bind mount. A worked
-compose file is in `examples/README.md`.
-
-`$config['editor']['portable_slm_enabled'] = FALSE;` by default. The 12-line floating-button patch
-that previously existed in `index_vuetify.php` is replaced by this, so the feature has an off switch
-and a version stamp. One gotcha, found the hard way: CodeIgniter gives every loaded view its own
-scope, so the project id must be passed down, `load->view("pslm_panel", array("sid" => $sid), true)`
-and a view that reads `$sid` from the parent view silently renders an empty record id.
+One host's wiring, in files, is in [`../examples/README.md`](../examples/README.md): the endpoints it
+declares, the panel view it mounts, the flag that switches the whole feature off, and the two gotchas it hit.
+This document stays host-agnostic, so nothing here depends on reading that.
 
 ## 8b. CSS ownership and cache policy
 
 The bundle styles its own structure with `:where()`-wrapped rules, **zero specificity**, so a host
-stylesheet overrides any of it without `!important`. In exchange, the host keeps geometry:
+stylesheet overrides any of it without `!important`. In exchange, the host keeps geometry and palette:
 
 | Owned by | What |
 |---|---|
-| bundle (`embed.js`, `chat.js`) | tabs, panes, scrolling, transcript, composer, CSS parts, keyboard behaviour |
-| host (`pslm_panel.php`) | position, width, height, z-index, palette, responsive breakpoints |
+| bundle (`embed.js`, `chat.js`) | tabs, panes, scrolling, transcript, composer, `part=` names, keyboard behaviour |
+| host | position, width, height, z-index, palette, responsive breakpoints |
 
-Two host rules, both measured rather than assumed:
+Two host rules, both found the hard way:
 
 - **Never put geometry inline on the mount element.** `style="width:390px"` beats every stylesheet,
-  including the host's own, so the host loses the ability to restyle its own panel. Use a rule in a
+  including the host's own, so the host loses the ability to restyle its own panel. Put the size in a
   stylesheet.
-- **Cache bust the bundle URL.** Dist files are served without `Cache-Control`, so browsers apply
-  heuristic freshness from `Last-Modified` and can serve a stale `embed.js` after a deploy without
-  revalidating. The panel view emits `embed.js?v=<filemtime>`.
+- **Bust the bundle URL.** The built files ship without `Cache-Control`, so browsers apply heuristic
+  freshness from `Last-Modified` and can serve a stale `embed.js` after a deploy without revalidating.
+  Append a version query; `version.json`'s revision is the value that changes when the SDK does
+  (`tools/site-pack.mjs` shows one implementation).
 
-```php
-$bundle_version = @filemtime(FCPATH . 'portable-slm/embed.js') ?: time();
-// <script type="module" src="/portable-slm/embed.js?v=<?= $bundle_version ?>">
-```
+A size that survives real content, rather than a screenshot at the default height, is the thing to check:
+a panel that fits an empty transcript and clips a long answer is the usual first defect.
 
-Verified against the real panel geometry with the transcript filled past 400 lines:
-
-```
-SDK default      : panel 390x630  chat 368x502  fits ✓  scrolls ✓  composer visible ✓
-host id rule     : panel 520x360  chat 498x232  fits ✓  scrolls ✓  composer visible ✓
-host palette only: panel 390x630  chat 368x502  structure untouched, host colours applied
-narrow viewport  : panel 404x504  chat 382x376  fits ✓  scrolls ✓  (host media query)
-```
-
-Layout invariants inside the component, each one was a real bug:
-
-- `:host{box-sizing:border-box;max-width:100%;min-width:0;min-height:0}`, without `border-box` the
-  element's own border and padding spill past the width the host declared; without `min-width:0` a
-  flex item refuses to shrink below its content.
-- `[part=log]{flex:1 1 auto;min-height:0;overflow-y:auto}`, a flex item defaults to
-  `min-height:auto`, so the transcript grows forever instead of scrolling and pushes the composer
-  out of the panel.
-- **No `content-visibility` on the transcript.** Contained subtrees report a wrong `scrollHeight`,
-  which makes the transcript unscrollable while looking perfectly fine.
-- Panes toggle via `[data-pane]:not([hidden])`, never an inline `display`, which would defeat
-  `[hidden]`. That is exactly how a hidden chat pane stayed visible.
-
-### Logging
+## 8c. Logging
 
 Optional, and the only thing in `pslm-host/1` that accepts a write, so it is specified separately and
 narrowly. It is **not** part of the assistant's context and not reachable from the model: the bundle
@@ -612,7 +540,7 @@ server, and destroy the offline property that justifies the project.
 | Option | Verdict | Why |
 |---|---|---|
 | FastAPI as inference proxy for the browser | **reject** | breaks offline, moves context off the device, no benefit |
-| FastAPI/PHP serving pinned GGUF as a LAN mirror (`download(model,{sources:[...]})`) | **adopt later, no FastAPI needed** | a static path under the record editor's own docroot is same-origin and needs no new service; SHA-256 verification stays client-side |
+| FastAPI/PHP serving pinned GGUF as a LAN mirror (`download(model,{sources:[...]})`) | **adopt later, no FastAPI needed** | a static path under the host's own document root is same-origin and needs no new service; SHA-256 verification stays client-side |
 | FastAPI `submit_metadata_review` as a *large-model* comparator for the same task ids | **adopt for benchmarking** | measures whether the 350M model is good enough; same prompts, two executors, curator-visible diff |
 | Server-side task/prompt registry the bundle calls | **reject** | couples browser to server, kills offline, doubles the trust surface |
 | Feeding DuckDB/variable statistics into the browser model | **reject for now** | crosses the "metadata only, never record values" line |
@@ -622,29 +550,9 @@ Net: FastAPI stays a *quality baseline* tool, not an integration dependency. Not
 
 ## 10. Implementation status
 
-| Piece | Status |
-|---|---|
-| `integrations/host-contract.js`: manifest validation, `{id}`/`{pointer}` expansion, byte cap | ✅ done, tested (`test/host-contract.test.js`) |
-| `integrations/chat.js`: `<pslm-chat>`, the vanilla chat surface | ✅ done; `dist/chat.js` + `dist/chat.html`, verified in Chrome (offline tool, online tool with approval) |
-| `integrations/chat-core.js`: tool policy, message assembly, lexical grounding | ✅ done, tested (`test/chat-core.test.js`) |
-| `integrations/embed.js` + `vite.embed.config.js` → `dist/embed.js` (`npm run build:embed`) | ✅ done; chat tab now mounts `<pslm-chat>` instead of its own copy |
-| `tools/embed-assets.mjs` → `dist/embed-assets.json` + copied wasm/worker + `chat.html` | ✅ done |
-| `portable-slm.host.json` + panel view + `EDITOR_PORTABLE_SLM` in the record editor | ✅ done |
-| Same-origin model mirror install (SHA-256 verified, HTTP ranges) | ✅ verified in Chrome against the record editor origin |
-| Grounding stamp on host-context answers | ✅ verified: `grounded 5/7` vs `not in provided context (current, population, approximately, 1.2, million) — verify` |
-| Expired-session detection (HTML instead of JSON) | ✅ done; 401/403 now name themselves as "sign in as a curator" instead of "session expired" |
-| Cache-busted bundle URL (`embed.js?v=<filemtime>`) | ✅ done in the panel view: unbusted static files are served stale by heuristic caching |
-| CSS ownership split (`:where()` bundle rules, host keeps geometry) | ✅ done and measured at 390px, 520px and 420px viewport widths |
-| `version.json` build stamp (`version`, `gitSha`, `builtAt`) | ✅ done: `tools/version-stamp.mjs` in `build` and `build:embed`; `embed.js` shows `build 0.1.0+08d8517` in the panel bar and `host-check.html` prints it. A host that copied an older `dist/` still mounts: the stamp is optional by design. |
-| `host-check.html` acceptance page | ✅ done: 13 checks, every guard imported from `embed.js`. Run against the live editor origin signed **out**: `10 pass · 1 warn · 1 fail · 1 skip`. The fail is `context.record within maxBytes … HTTP 401`, which is the correct reading of a host you are not signed into, and the warn is the model not being installed in that profile. A clean run needs a curator session. |
-| Named task ids in code (`pslm.chat`, `pslm.suggest-field`) | ✅ done: `TASKS`/`allowsTask` in `host-contract.js`, unknown ids fail the manifest, the suggest/chat tabs are gated on the allowlist, and `suggestMetadata` stamps `task` on the envelope. `source` stays: it says *whose* metadata was read, which is a different question. |
-| **Fill this field** hook | ✅ done: cancelable `pslm-fill-request` event, host acknowledges with `preventDefault()`. Checked by `vue-app/pslm-fill-fixture.html` in Chrome against Vue 2 `v-model` on a real `.field-<key>` wrapper: filled / wrong-project refused / read-only refused / absent-field refused, no refused fill changed the form, and each refusal carries the right message. |
-| **Record-less mount** (`mountMode`) | ✅ done: the panel now mounts on a page that declares nothing: no manifest, no record, plain chat with an ungrounded notice. Verified in Chrome on a host origin across all four modes: `chat+suggest / 6 pointers` → `chat only + notice` → `chat only, "Portable SLM · local assistant"` → `refused with "needs a host manifest"`, zero page errors. Tested as a pure function. |
-| **Shipped context, append-only** (`composeContext`) | ✅ done: Portable SLM's own description is first in every prompt on every surface; a host appends after a marker and cannot replace or delete it. Tested (order, marker, blank/null → no appended section, honesty lines present, "I cannot save anything" now grounds as quoted). |
-| **`context.app`**: app-level source for pages with no record | ✅ done: same-origin, capped, HTML answers rejected (`fetchApp`). A record-less page is grounded in `app.md`: 4 512 of 8 192 bytes, `app help readable and within maxBytes … PASS`, notice reads "answering from this application's help text, not from your project data". **Caveat documented in §3c: a static file has no access control, so this source must hold documentation, never data.** |
-| **Declared host tools** (`tools`, §4d) | ✅ done: `hostTools()` validates id, method, origin and schema at mount, and `buildHostTools()` builds runnable, capped, same-origin GET tools whose `{id}` can never come from the model. Tested (5 cases), and `host-check.html` now *calls* each declared tool. `docs/AGENT.md` is the plan for search, backend review jobs and MCP on top. |
-
-Still open, in §11.
+Per-piece status, and what has and has not been run, is in [`STATUS.md`](STATUS.md) so that it has one home
+instead of drifting into a contract document. This contract describes what must be true, not what is
+currently built.
 
 ## 11. Open questions
 

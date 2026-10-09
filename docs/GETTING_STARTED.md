@@ -160,7 +160,7 @@ first check is that stamp.
 |---|---|
 | [HOST_CONTRACT.md](HOST_CONTRACT.md) | the manifest field by field, the task list, the acceptance definition |
 | [CHAT.md](CHAT.md) | attributes, events, theming, the answers' provenance and completeness |
-| [examples/README.md](../examples/README.md) | the two worked integrations and the bundled-pilot deployment |
+| [examples/README.md](../examples/README.md) | the two worked integrations, and what each changed in the SDK |
 | [TOOLS.md](TOOLS.md) | authoring a tool, network policy, what the limits are |
 | [CONTEXT_PROVIDERS.md](CONTEXT_PROVIDERS.md) | **where context comes from**: the five-rung ladder, when to stop climbing, and the ownership seam in detail |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | how the pieces fit and why the boundaries are where they are |

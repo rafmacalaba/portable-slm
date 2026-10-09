@@ -1,8 +1,8 @@
 # The assistant harness: how the prompt is assembled, and where to tune it
 
-This is the working guide for improving how the panel assistant behaves on the record editor:
-its system prompt, tool calling, context feeds and response rules. Everything here is data and
-configuration, never model weights.
+The working guide for changing how the assistant behaves: its system prompt, tool calling, context
+feeds and response rules. Everything here is data and configuration, never model weights, and nothing here
+is specific to one application.
 
 ## The four layers, in the order the model sees them
 
@@ -64,9 +64,11 @@ instructions ("the assistant cannot save", not "never claim to save").
 
 1. Change one layer (prompt text, guard, cap, or help doc).
 2. `npm test` in `portable-slm/`, prompt-shape and guard tests must pass.
-3. `npm run build:embed`, hard-refresh the record editor, rebuild the record editor image only if host PHP changed.
-4. Exercise: identity question (no tool), field question (tool + approval), datafile suggestion
-   (Suggest tab → Fill), general knowledge question (direct, no refusal).
+3. `npm run build:embed`, then hard-refresh the host page. Rebuild the host itself only if its own
+   server-rendered code changed, and remember that a hosted page caches its bundle: see
+   [`../GETTING_STARTED.md`](../docs/GETTING_STARTED.md) on cache busting.
+4. Exercise one of each kind: an identity question (no tool), a record question (tool plus approval), a
+   suggestion that reaches a form, and a general-knowledge question that is answered without a tool.
 5. Read **What was sent** for the final assembled prompt before judging the answer.
 
 ## Model-specific notes (LFM2.5)

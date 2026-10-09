@@ -204,7 +204,7 @@ the verified model, because `navigator.onLine` says nothing about either. After 
 network.
 
 Storage is per browser origin, so a model installed on one origin is invisible to another: your app, a
-hosted demo and an extension each need their own copy. Browsers can evict it, in which case re-import the file
+another origin and an extension each need their own copy. Browsers can evict it, in which case re-import the file
 you kept. The model manager shows approximate usage and quota, and on a quota error it keeps what is installed
 and asks before removing anything.
 
@@ -217,7 +217,7 @@ and asks before removing anything.
 | [HOST_CONTRACT.md](docs/HOST_CONTRACT.md) | the `pslm-host/1` manifest, the context sources, the tasks, the acceptance definition |
 | [CHAT.md](docs/CHAT.md) | the element's attributes, and the events a host may rely on |
 | [TOOLS.md](docs/TOOLS.md) | what a tool may be, and the limits the loop enforces |
-| [HOST_CONTRACT.md §logging](docs/HOST_CONTRACT.md#logging) | the optional log endpoint a host implements |
+| [HOST_CONTRACT.md §8c](docs/HOST_CONTRACT.md#8c-logging) | the optional log endpoint a host implements |
 
 **Guides** — how to build with it.
 
@@ -235,7 +235,7 @@ and asks before removing anything.
 
 | document | what it records |
 |---|---|
-| [IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md) | status, release gates, the gated retrieval follow-up |
+| [STATUS.md](docs/STATUS.md) | status, release gates, the gated retrieval follow-up |
 | [DEVICE_VALIDATION.md](docs/DEVICE_VALIDATION.md) | what has been run on which device, and what has not |
 | [examples/README.md](examples/README.md) | the two worked host integrations, end to end |
 | [AGENTS.md](AGENTS.md) | working **in this repository**: invariants, module map, how to verify a change |
