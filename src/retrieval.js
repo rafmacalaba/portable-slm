@@ -146,20 +146,24 @@ export function tokenize(text) {
  */
 export function bm25(chunks, question, { k = RETRIEVAL_DEFAULTS.topK, k1 = RETRIEVAL_DEFAULTS.k1, b = RETRIEVAL_DEFAULTS.b } = {}) {
   const query = [...new Set(tokenize(question))];
-  const scored = chunks.map((chunk) => ({ index: chunk.index, score: 0, matched: [] }));
   if (!query.length || !chunks.length) return [];
-
-  const lengths = new Map(chunks.map((chunk) => [chunk.index, chunk.tokens.length]));
+  // Address chunks by their position in this array, never by `chunk.index`. That field is a chunk's position
+  // within its own document, so a corpus of several documents collides on it: 37 chunks of this SDK's own
+  // documentation share 10 distinct values. Scoring by it attributed every match to whichever chunk happened
+  // to be last with that number, which is a wrong answer with no error anywhere. The array is also the
+  // address space the vectors use, so both halves now agree by construction.
+  const scored = chunks.map((chunk, position) => ({ index: position, score: 0, matched: [] }));
+  const lengths = new Map(chunks.map((chunk, position) => [position, chunk.tokens.length]));
   const average = [...lengths.values()].reduce((sum, n) => sum + n, 0) / chunks.length || 1;
   const entries = new Map(scored.map((entry) => [entry.index, entry]));
 
   for (const term of query) {
     const frequency = new Map();
-    for (const chunk of chunks) {
+    chunks.forEach((chunk, position) => {
       let count = 0;
       for (const token of chunk.tokens) if (token === term) count++;
-      if (count) frequency.set(chunk.index, count);
-    }
+      if (count) frequency.set(position, count);
+    });
     if (!frequency.size) continue;
     // A query term has to separate some chunks from others to be evidence of anything. BM25's IDF already
     // prices a ubiquitous term at almost zero, but several near-zero weights still add up to a hit, which is
@@ -236,10 +240,10 @@ export function rankChunks(index, question, { k = RETRIEVAL_DEFAULTS.topK, alpha
   const semantic = new Map();
   const vectors = index?.vectors;
   if (queryVector && vectors && queryVector.length === index.dims) {
-    for (const chunk of chunks) {
-      const at = chunk.index * index.dims;
+    for (let position = 0; position < chunks.length; position++) {
+      const at = position * index.dims;
       if (at + index.dims > vectors.length) break;
-      semantic.set(chunk.index, cosine(queryVector, vectors.subarray(at, at + index.dims)));
+      semantic.set(position, cosine(queryVector, vectors.subarray(at, at + index.dims)));
     }
   }
   // A vector match is a candidate for every chunk, so without a floor a question the corpus does not
@@ -258,11 +262,11 @@ export function rankChunks(index, question, { k = RETRIEVAL_DEFAULTS.topK, alpha
   const semanticScaled = scale(semantic);
 
   return chunks
-    .map((chunk) => ({
+    .map((chunk, position) => ({
       chunk,
-      lexical: lexical.get(chunk.index) ?? 0,
-      semantic: semantic.get(chunk.index) ?? null,
-      score: (lexicalScaled.get(chunk.index) ?? 0) * (1 - weight) + (semanticScaled.get(chunk.index) ?? 0) * weight,
+      lexical: lexical.get(position) ?? 0,
+      semantic: semantic.get(position) ?? null,
+      score: (lexicalScaled.get(position) ?? 0) * (1 - weight) + (semanticScaled.get(position) ?? 0) * weight,
     }))
     .filter((entry) => entry.lexical > 0 || entry.semantic !== null)
     .sort((left, right) => right.score - left.score || left.chunk.index - right.chunk.index)
@@ -327,7 +331,15 @@ export function indexKey({ corpusVersion = "0", embedderId = "bm25", dims = 0, c
 
 /** Build the in-memory index `rankChunks` reads. Vectors are flat: chunk i occupies [i*dims, (i+1)*dims). */
 export function buildIndex({ chunks, vectors = null, dims = 0, embedderId = "bm25", corpusVersion = "0", chunkChars = 0 }) {
-  return { chunks, vectors: vectors ? Float32Array.from(vectors) : null, dims, embedderId, corpusVersion, chunkChars, key: indexKey({ corpusVersion, embedderId, dims, chunkChars }) };
+  // The index owns the numbering, and it is positional because the vectors are stored that way. Taking the
+  // chunks as given would carry each document's own numbering into a shared address space where it collides.
+  const numbered = chunks.map((chunk, position) => (chunk.index === position ? chunk : { ...chunk, index: position }));
+  return {
+    chunks: numbered,
+    vectors: vectors ? Float32Array.from(vectors) : null,
+    dims, embedderId, corpusVersion, chunkChars,
+    key: indexKey({ corpusVersion, embedderId, dims, chunkChars }),
+  };
 }
 
 // Base64 over bytes, implemented here rather than via btoa or Buffer so the same code runs in a

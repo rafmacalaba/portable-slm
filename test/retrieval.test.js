@@ -205,3 +205,28 @@ test("matryoshka truncates and re-normalizes, and a prefix is usable on its own"
   const other = normalize(Float32Array.from([1, 0, 0, 0]));
   assert.notEqual(cosine(prefix, matryoshka(other, 2)), cosine(fixed, matryoshka(other, 2)));
 });
+
+test("a multi-document corpus is addressed by position, not by each document's own numbering", () => {
+  const first = chunkText("## A1\nalpha text\n\n## A2\nbeta text");
+  const second = chunkText("## B1\ngamma text\n\n## B2\ndelta text");
+  // Each document numbers its own chunks from zero, so as given they collide. This is what a corpus of 16
+  // documents looked like: 37 chunks sharing 10 distinct indices, and every score landing on the wrong text.
+  assert.deepEqual(first.map((chunk) => chunk.index), [0, 1]);
+  assert.deepEqual(second.map((chunk) => chunk.index), [0, 1]);
+
+  const index = buildIndex({ chunks: [...first, ...second] });
+  assert.deepEqual(index.chunks.map((chunk) => chunk.index), [0, 1, 2, 3], "the index owns the numbering");
+
+  const lexical = bm25(index.chunks, "gamma", { k: 1 });
+  assert.equal(index.chunks[lexical[0].index].heading, "B1", "a match in the second document resolves to it");
+
+  // The vector half addresses chunks the same way, so the distinctive vector must be read at B1's position.
+  const dims = 3;
+  const vectors = new Float32Array(index.chunks.length * dims);
+  vectors[2 * dims] = 1;
+  const built = buildIndex({ chunks: [...first, ...second], vectors, dims });
+  const ranked = rankChunks(built, "delta text", {
+    alpha: 1, k: 1, minSimilarity: 0.5, queryVector: normalize(Float32Array.from([1, 0, 0])),
+  });
+  assert.equal(ranked[0].chunk.heading, "B1", "the vector is read at the chunk's position, not at a collided index");
+});
