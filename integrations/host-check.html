@@ -96,10 +96,16 @@
       if (manifest.context?.app?.url) rungs.push("1 · context.app");
       if (manifest.context?.record?.url) rungs.push("2 · context.record");
       if (manifest.context?.field?.url || manifest.context?.datafile?.url || manifest.tools?.length) rungs.push("3 · narrow reads");
+      const documents = manifest.context?.documents ?? [];
+      if (documents.length) {
+        // A declared corpus is the answer to the cap, and the SDK ranks it, so this is no longer a warning.
+        const tier = manifest.retrieval?.embedder ?? "auto";
+        return `5 · SDK retrieval over ${documents.length} document(s), embedder ${tier}${manifest.retrieval?.alpha === 0 ? " (weight 0, so keyword only)" : ""}`;
+      }
       const name = rungs.join(" + ") || "0";
       // Rung 4 cannot be seen from a manifest: it lives in the host's own onContext. Say so rather than
-      // implying that a manifest-declared rung is the ceiling.
-      return { warn: `rung ${name} — rung 4 (a ranked read inside onContext) is invisible from here, and is where a corpus past the cap belongs` };
+      // implying that a manifest-declared rung is the ceiling, and point at the declaration that replaces it.
+      return { warn: `rung ${name} — rung 4 lives in the host's own onContext and cannot be seen from here; declare context.documents to have the SDK rank a corpus for you` };
     });
 
     await check(rows, "build stamp", () => {
@@ -166,12 +172,30 @@
         const chat = host.querySelector("pslm-chat");
         if (!chat) throw new Error("the mount produced no pslm-chat element");
         if (typeof chat.onContext !== "function") throw new Error("the mount set no context provider");
-        const text = await chat.onContext();
-        if (typeof text !== "string" || !text.trim()) throw new Error("the panel's context path returned nothing");
+        // A retrieval manifest answers a question, so calling the provider with none can only return
+        // nothing, which is not a failure. Ask something drawn from the corpus itself: that also proves the
+        // corpus is readable and rankable, which is the part a mount can get wrong.
+        const documents = manifest.context?.documents ?? [];
+        let question = "";
+        if (documents.length) {
+          try {
+            const first = await fetch(new URL(documents[0].url, base).href);
+            const words = (await first.text()).match(/[A-Za-z0-9_-]{5,}/g) ?? [];
+            question = words.slice(0, 12).join(" ");
+          } catch { /* the empty probe below reports it */ }
+        }
+        const text = await chat.onContext(question || undefined);
+        if (typeof text !== "string") throw new Error("the panel's context path did not return a string");
+        if (!text.trim()) {
+          throw new Error(documents.length
+            ? `the corpus answered nothing for a question drawn from ${documents[0].url}`
+            : "the panel's context path returned nothing");
+        }
         const bytes = new TextEncoder().encode(text).length;
         // Compare against the cap of the source this mount actually reads, not whichever one happens to
         // be first in the manifest.
-        const cap = (isRecord ? manifest.context?.record?.maxBytes : manifest.context?.app?.maxBytes) ?? 32768;
+        const cap = documents.length ? (manifest.retrieval?.maxBytes ?? 8192)
+          : (isRecord ? manifest.context?.record?.maxBytes : manifest.context?.app?.maxBytes) ?? 32768;
         if (bytes > cap + 4096) return { warn: `${bytes} bytes through the panel's seam — larger than the declared ${cap}` };
         return `${bytes} bytes through the panel's own seam, cap ${cap}`;
       } finally {
