@@ -159,7 +159,11 @@ export function parseMarkdown(text) {
       continue;
     }
     if (fence) { fence.lines.push(line); continue; }
-    if (!line.trim()) { flushPara(); flushList(); continue; }
+    // A blank line ends a paragraph but not a list. Small models put one between every item, and treating it
+    // as the end of the list turned "1. 2. 3." into three one-item lists, each of which renders as "1.".
+    // The list is flushed by whatever non-item content comes next instead, which is what the branches below
+    // already do.
+    if (!line.trim()) { flushPara(); continue; }
 
     // Pipe tables: header row, then a |---|---| separator, then rows. Cells go through the same
     // inline parser as prose; the model emits tables for inventories, so they must render, not leak.

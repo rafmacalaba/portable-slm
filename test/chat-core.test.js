@@ -224,3 +224,19 @@ test("the transcript has a way to re-pin after content grows", async () => {
   assert.match(source, /ResizeObserver/, "a growth observer is what catches a late height change");
   assert.match(source, /#sizer\.observe\(el\)|#sizer\?\.observe|#watch\(/, "observers must be attached to the elements that grow");
 });
+
+test("a blank line between items does not split a list, or every item renders as 1", () => {
+  // The reported symptom: a numbered answer where every line showed "1.". The parser ended the list on a blank
+  // line, and small models put one between items, so "1. 2. 3." became three one-item lists.
+  const tight = parseMarkdown("1. Armada\n2. SLMs\n3. Infra");
+  const loose = parseMarkdown("1. Armada\n\n2. SLMs\n\n3. Infra");
+  assert.equal(loose.filter((b) => b.type === "list").length, 1, "a loose numbered list is one list");
+  assert.equal(loose[0].ordered, true);
+  assert.equal(loose[0].items.length, 3);
+  assert.deepEqual(loose.map((b) => b.type), tight.map((b) => b.type), "loose and tight lists parse the same");
+  // Bullets behave identically, and the list still ends where real content begins.
+  assert.equal(parseMarkdown("- a\n\n- b").filter((b) => b.type === "list").length, 1);
+  const mixed = parseMarkdown("1. a\n\n2. b\n\nSome prose.");
+  assert.deepEqual(mixed.map((b) => b.type), ["list", "p"]);
+  assert.equal(mixed[0].items.length, 2);
+});
