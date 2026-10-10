@@ -59,6 +59,10 @@ const CSS = `
 [part=bubble][data-role=assistant] .md p:last-child{margin-bottom:0}
 [part=bubble][data-role=assistant] .md ul,[part=bubble][data-role=assistant] .md ol{margin:.2rem 0 .5rem;padding-left:1.3rem}
 [part=bubble][data-role=assistant] .md li{margin:.15rem 0}
+/* A nested list is the model's own structure, so it gets its own marker and a little inset. */
+[part=bubble][data-role=assistant] .md li>ul{margin:.15rem 0 .15rem 0;padding-left:1.1rem;list-style:circle}
+[part=bubble][data-role=assistant] .md hr{border:0;border-top:1px solid #e3e9f0;margin:.6rem 0}
+[part=bubble][data-role=assistant] .md blockquote{margin:.4rem 0;padding:.1rem .7rem;border-left:3px solid #d0d7de;color:#57606a}
 [part=bubble][data-role=assistant] .md code{font:12.5px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace;background:#eef2f6;
   padding:.05rem .25rem;border-radius:4px}
 [part=bubble][data-role=assistant] .md pre{margin:.3rem 0;padding:.5rem .6rem;background:#eef2f6;border-radius:6px;overflow:auto;
@@ -160,10 +164,30 @@ export function renderMarkdown(text) {
       const ul = document.createElement(block.ordered ? "ol" : "ul");
       for (const item of block.items) {
         const li = document.createElement("li");
-        li.append(runsToNodes(item));
+        li.append(runsToNodes(item.runs));
+        // Sub-points nest inside the item that introduced them, which is the structure the model wrote.
+        if (item.sub?.length) {
+          const nested = document.createElement("ul");
+          for (const sub of item.sub) {
+            const subItem = document.createElement("li");
+            subItem.append(runsToNodes(sub));
+            nested.append(subItem);
+          }
+          li.append(nested);
+        }
         ul.append(li);
       }
       box.append(ul);
+      continue;
+    }
+    if (block.type === "rule") {
+      box.append(document.createElement("hr"));
+      continue;
+    }
+    if (block.type === "quote") {
+      const quote = document.createElement("blockquote");
+      quote.append(runsToNodes(block.runs));
+      box.append(quote);
       continue;
     }
     if (block.type === "table") {

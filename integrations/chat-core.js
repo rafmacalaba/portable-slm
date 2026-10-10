@@ -136,6 +136,9 @@ const FENCE = /^\s*```(\S*)\s*$/;
 const BULLET = /^\s*[-*+]\s+/;
 const NUMBERED = /^\s*\d+[.)]\s+/;
 const HEADING = /^(#{1,6})\s+(.*)$/;
+/** A separator line: three or more of one marker and nothing else. */
+const RULE = /^ {0,3}([-*_])\s*(?:\1\s*){2,}$/;
+const QUOTE = /^ {0,3}> ?(.*)$/;
 
 export function parseMarkdown(text) {
   const blocks = [];
@@ -144,7 +147,24 @@ export function parseMarkdown(text) {
   let list = null;
   let fence = null;
   const flushPara = () => { if (para.length) blocks.push({ type: "p", runs: parseInline(para.join("\n")) }); para = []; };
-  const flushList = () => { if (list) blocks.push(list); list = null; };
+  // Items stay raw until the list closes. A wrapped line belongs to the item above it, and the inline parser
+  // should see the joined text rather than two fragments that each look like a whole sentence.
+  const flushList = () => {
+    if (list) {
+      blocks.push({
+        type: "list",
+        ordered: list.ordered,
+        items: list.items.map((item) => ({
+          runs: parseInline(item.text),
+          // Sub-points render as one nested list. A numbered sub-point under a bullet loses its numbers, which is
+          // the one simplification here and is rarer than the structure it preserves.
+          sub: item.sub.map((sub) => parseInline(sub)),
+        })),
+      });
+    }
+    list = null;
+  };
+  const indentOf = (line) => line.match(/^ */)[0].length;
 
   const TABLE_ROW = /^\s*\|.*\|\s*$/;
   const TABLE_SEP = /^\s*\|?(\s*:?-{3,}\s*\|)+\s*:?-{3,}\s*\|?\s*$/;
@@ -165,6 +185,10 @@ export function parseMarkdown(text) {
     // already do.
     if (!line.trim()) { flushPara(); continue; }
 
+    // A separator is structure, not prose. Rendered as text it also swallowed whatever followed it, because the
+    // rule line and the next line ended up in one paragraph.
+    if (RULE.test(line)) { flushPara(); flushList(); blocks.push({ type: "rule" }); continue; }
+
     // Pipe tables: header row, then a |---|---| separator, then rows. Cells go through the same
     // inline parser as prose; the model emits tables for inventories, so they must render, not leak.
     if (TABLE_ROW.test(line) && index + 1 < lines.length && TABLE_SEP.test(lines[index + 1])) {
@@ -181,6 +205,15 @@ export function parseMarkdown(text) {
       continue;
     }
 
+    const quote = line.match(QUOTE);
+    if (quote) {
+      flushPara(); flushList();
+      const parts = [quote[1]];
+      while (index + 1 < lines.length && QUOTE.test(lines[index + 1])) parts.push(lines[++index].match(QUOTE)[1]);
+      blocks.push({ type: "quote", runs: parseInline(parts.join(" ").trim()) });
+      continue;
+    }
+
     const heading = line.match(HEADING);
     if (heading) {
       flushPara(); flushList();
@@ -192,10 +225,26 @@ export function parseMarkdown(text) {
     if (bullet || numbered) {
       flushPara();
       const ordered = Boolean(numbered);
-      if (!list || list.ordered !== ordered) { flushList(); list = { type: "list", ordered, items: [] }; }
-      list.items.push(parseInline(line.replace(bullet ? BULLET : NUMBERED, "")));
+      const text = line.replace(bullet ? BULLET : NUMBERED, "").trim();
+      const indent = indentOf(line);
+      if (list && list.items.length && indent > list.indent) {
+        // Deeper than the item above, so it is that item's sub-point. Flattening these into siblings is how
+        // "could be strengthened by:" lost the reasons it was introducing.
+        list.items[list.items.length - 1].sub.push(text);
+        continue;
+      }
+      if (!list || list.ordered !== ordered) { flushList(); list = { ordered, indent, items: [] }; }
+      list.items.push({ text, sub: [] });
       continue;
     }
+
+    // An indented line that starts no block continues the item above it. This is the commonest shape in real
+    // output, because a long item wraps, and breaking the list there is what split three fields into two lists.
+    if (list && list.items.length && /^\s+\S/.test(line)) {
+      list.items[list.items.length - 1].text += ` ${line.trim()}`;
+      continue;
+    }
+
     flushList();
     para.push(line);
   }

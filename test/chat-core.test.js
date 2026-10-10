@@ -240,3 +240,38 @@ test("a blank line between items does not split a list, or every item renders as
   assert.deepEqual(mixed.map((b) => b.type), ["list", "p"]);
   assert.equal(mixed[0].items.length, 2);
 });
+
+test("a wrapped item line continues the item instead of ending the list", () => {
+  // The reported defect: three populated fields arrived as a two-item list and a one-item list, because the
+  // abstract wrapped onto a second line and a non-bullet line was taken as the end of the list.
+  const blocks = parseMarkdown("- **Title** - short\n- **Abstract** - long, and it wraps\n  onto a second line\n- **Universe** - third");
+  assert.equal(blocks.length, 1);
+  assert.equal(blocks[0].type, "list");
+  assert.equal(blocks[0].items.length, 3, "the wrapped line must not split the list");
+  const text = (runs) => runs.map((run) => run.v).join("");
+  assert.match(text(blocks[0].items[1].runs), /wraps onto a second line$/);
+  assert.match(text(blocks[0].items[2].runs), /third$/);
+});
+
+test("a deeper bullet is a sub-point of the item above it", () => {
+  const blocks = parseMarkdown("- **Abstract** - could be strengthened by:\n  - Adding methodology\n  - Including the purpose\n- **Universe** - fine");
+  assert.equal(blocks[0].items.length, 2);
+  assert.equal(blocks[0].items[0].sub.length, 2, "the reasons belong to the item that introduced them");
+  assert.equal(blocks[0].items[1].sub.length, 0);
+});
+
+test("a separator is a rule, and does not swallow the line after it", () => {
+  const blocks = parseMarkdown("first\n\n---\nNote after the rule.");
+  assert.deepEqual(blocks.map((b) => b.type), ["p", "rule", "p"]);
+  const text = (runs) => runs.map((run) => run.v).join("");
+  assert.equal(text(blocks[2].runs), "Note after the rule.", "the rule line must not join the next paragraph");
+  // Three markers of any kind, and asterisks are not a bullet when the line is nothing but markers.
+  assert.deepEqual(parseMarkdown("***").map((b) => b.type), ["rule"]);
+  assert.deepEqual(parseMarkdown("___").map((b) => b.type), ["rule"]);
+});
+
+test("consecutive quote lines become one callout", () => {
+  const blocks = parseMarkdown("> Note: a demo record.\n> Second line.\n\nAfter.");
+  assert.deepEqual(blocks.map((b) => b.type), ["quote", "p"]);
+  assert.match(blocks[0].runs.map((r) => r.v).join(""), /Second line/);
+});
