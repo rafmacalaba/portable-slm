@@ -345,5 +345,6 @@ rather than replaced by it.
 - **Reranking, and anything beyond top-k.** Twelve sections are ranked and six are offered; nothing reorders
   them afterwards.
 - **Multi-vector or late-interaction retrieval**, and query expansion.
-- **Incremental indexing.** A corpus edit means a rebuild. The rebuild is keyed and cached, so it is one
-  embedding pass rather than one per visit, but it is still a pass.
+- **Incremental indexing.** A corpus edit means a full rebuild, whether in the browser or with
+  `npm run index`. The rebuild is keyed and cached, so it is one embedding pass rather than one per visit, but
+  it is still a pass. A frozen artifact is refreshed by re-running the tool, not by a partial update.

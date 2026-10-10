@@ -15,6 +15,7 @@ observation named; everything else is either unverified or deliberately unbuilt.
 | **Answer quality signals** | grounding (answer tokens absent from the supplied context) and completeness (empty, plan-shaped, truncated, narrating) are decided in code and shown per answer; both have tests built from real observed failures |
 | **Retrieval, the ranker half** | `src/retrieval.js`: a heading-aware chunker, BM25, a hybrid rank over the same chunks, a byte cap that reports what it dropped, and an index format with a cache key that changes with the corpus, embedder, dimensions or chunker |
 | **Two embedder tiers** | `src/embedder.js`: the default tier is ternlight, bundled in the package, so it installs nothing and was measured at 1.49 ms per embedding in Node and again through the browser runtime. The quality tier is EmbeddingGemma 2 text, pinned at a revision with per-file SHA-256 and confirmed to load with only its six pinned files present. `src/transforms.js` holds the `text-only` edit that keeps that export from fetching 93 MB of vision and 162 MB of audio weights |
+| **Freezing, and freshness** | `npm run index -- <dir> --out <file>` writes a prebuilt artifact; `corpusHash` puts a hash of the indexed documents into the index key, sorted so order and path spelling cannot change it, which makes a stale artifact or cache entry impossible rather than unlikely. Measured on a 1.9 MB documentation corpus: 4,264 chunks, 96 s to embed, 10.6 MB artifact, and a reader then fetches vectors instead. 218 tests |
 | **Retrieval as the default** | `integrations/retrieval-context.js` wires the corpus fetcher, the index cache and the provider into `<pslm-chat>`; manifest validation refuses a typo or a cross-origin path at mount. Verified in real Chrome by `npm run e2e:retrieval`: 27 checks over three manifests (a prebuilt artifact, none, and keyword-only), with the real bundled embedder and nothing faked. It observes the network, so `embedder: "none"` is proved to fetch no embedder runtime at all, and the paraphrase and off-corpus checks run against the real model |
 | **The app** | chat and model manager at `/`, evidence-checked Q&A at `/catalogue-qa.html`, field suggestion at `/field-suggest.html`, twelve authored benchmark cases at `/benchmark.html`, and the acceptance page at `/host-check.html` |
 | **Desktop Chrome extension** | MV3 side panel in `integrations/chrome-extension/`: imports a local GGUF, calls an offline tool, restarts offline and calls it again |
@@ -40,15 +41,17 @@ observation named; everything else is either unverified or deliberately unbuilt.
   the path.
 - **Bundled model weights.** They are hundreds of megabytes to a gigabyte and carry their own licences.
 
-## The one gated follow-up: retrieval
+## Retrieval: the gate that was honoured
 
-[`CONTEXT_PROVIDERS.md`](CONTEXT_PROVIDERS.md) defines the context ladder: rung 0 the SDK's own description,
-1 `context.app`, 2 `context.record`, 3 narrow declared reads, 4 a ranked read inside `onContext(question)`,
-5 SDK-provided retrieval. Rungs 0 to 4 exist and need no further SDK surface; rung 4 is the documented
-extension point and already receives the question.
+The project's rule was embeddings only after keyword scoring measurably failed, and the measurement is what
+this shipped on. [`CONTEXT_PROVIDERS.md`](CONTEXT_PROVIDERS.md) records the ladder and what the numbers
+decided; [`RETRIEVAL.md`](RETRIEVAL.md) is the host's guide.
 
-Rung 5 is deliberately not started, and the trigger is written down: keyword ranking misses answers that a
-human finds by paraphrase, on a meaningful share of a golden set, **and** the miss is recall rather than the
-byte cap. Only then does the shape get decided — a pinned embedder with SHA-256 in `src/models.js`, a
-feature-extraction runtime path beside the text one, a vector cache keyed by corpus version, and a decision
-about where search runs. No embedder is chosen today.
+Two things remain open, both named rather than implied:
+
+- **A per-record corpus cannot be requested.** `context.documents` does not expand `{id}` while `record`,
+  `field` and declared tools do, so "the guidance for the template this record uses" has no route. It is a few
+  lines reusing the existing `expand()`.
+- **No test ingests a real documentation set.** The suite covers the artifact's acceptance, its refusal when
+  the corpus changes, and document order, all against small fixtures. Every number at documentation scale was
+  measured by hand, which is why it is written down in `RETRIEVAL.md` rather than trusted to a checkmark.

@@ -23,10 +23,10 @@ flowchart TB
   R2["rung 2, context.record<br/><small>a snapshot per question, behind your session and ACL</small>"]
   R3["rung 3, field · datafile · tools<br/><small>narrow reads on demand, from an allowlist</small>"]
   R4["rung 4, onContext(question)<br/><small>a ranked read of your own corpus, inside the seam</small>"]
-  R5["rung 5, SDK-provided retrieval<br/><small>not built · gated on rung 4 measurably failing</small>"]
+  R5["rung 5, SDK-provided retrieval<br/><small>shipped · a declared corpus, ranked per question</small>"]
   R0 --> R1 --> R2 --> R3 --> R4 --> R5
   R4 -.->|"no SDK change needed"| R4
-  R5 -.->|"a second pinned artifact"| R5
+  R5 -.->|"freeze it with npm run index"| R5
 ```
 
 
@@ -145,22 +145,30 @@ Cheap, and it stops the model inventing what a "study" or a "dissagregation" is.
 turns "the answers feel worse" into a number. [`ANSWER_QUALITY.md`](ANSWER_QUALITY.md) has the method, and
 the *abstention rate* on the unanswerable third is the number that matters most.
 
-## Rung 5, SDK-provided retrieval: not built
+## Rung 5, SDK-provided retrieval: shipped
 
-Deliberately. The project's own rule is **embeddings only after keyword scoring measurably fails**: a
-ranking model buys paraphrase recall, and costs you "read the scoring function and see why", plus a second
-pinned, verified, downloadable artifact.
+Declare a corpus and the SDK ranks it: `context.documents` names the text, `retrieval` sets the knobs, and
+`context.app` stays the short document that is always in the prompt. The ladder's rule was honoured rather
+than waived: this shipped **after** keyword ranking was measured, on real corpora, to miss answers a human
+finds by paraphrase.
 
-Nothing here is a plan with a model chosen. The trigger, written down, is:
+What the measurements decided, rather than taste:
 
-- keyword ranking misses answers a human finds by paraphrase, on a meaningful share of the golden set, **and**
-- the miss is recall rather than the byte cap.
+- **Both scorers, always.** BM25 finds `house_hold_id` and `delete/{id}` exactly and cannot find "who paid for
+  the survey"; embeddings do the reverse. Each is weak where the other is strong, which is why the fusion is
+  the default rather than a choice between them.
+- **The tier is chosen per corpus.** On a 12 KB site corpus the bundled encoder and the 181 MB one were one
+  question in ten apart in the top three; on a 1.9 MB documentation corpus they were equal in first place and
+  one question apart in the top three. So the bundled tier is the default and the larger one is for corpora
+  where schema-semantics questions demonstrably fail.
+- **The floor is per corpus, measured.** Documentation is full of generic vocabulary, so on a documentation
+  corpus no floor separated unrelated questions cleanly; on a small curated corpus 0.30 did. A host that does
+  not measure is choosing a number at random.
+- **Freezing is what makes it usable at scale.** Indexing a 1.9 MB corpus measured 96 seconds; frozen with
+  `npm run index` the reader fetches vectors instead.
 
-Only then does the shape get decided: a pinned embedder from the client-side model set (the intended
-source, no default is chosen here), a feature-extraction runtime path, a vector cache keyed by corpus
-version, and a decision about where search runs. Tracked in
-[`STATUS.md`](STATUS.md) as the next step after rung 4 is exercised on a real
-corpus.
+What is still open is in [`RETRIEVAL.md`](RETRIEVAL.md): per-record corpora need `{id}` expansion in
+`context.documents`, and no test yet ingests a real documentation set.
 
 ## Where to stop climbing
 
@@ -171,7 +179,7 @@ corpus.
 | one object on screen, behind your session | **2** |
 | a large object, or a choice the model should make | **3** |
 | a corpus bigger than the cap, or questions that need selection | **4** |
-| rung 4 measured to miss for a reason only vectors fix | **5** |
+| a corpus bigger than the cap | **4** to rank it yourself, or **5** to declare it and let the SDK rank it |
 
 The rule underneath: **stop at the rung that fits the cap, and climb only when you can measure the
 failure.** Training a ranker before you have measured the need is how a small local model acquires a

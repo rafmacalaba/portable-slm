@@ -15,6 +15,11 @@ rather than from the whole document cut at the byte cap. The default embedder sh
 to install, and embeddings begin within milliseconds of the first question. `"embedder": "none"` in the
 manifest opts out to keyword search with nothing fetched.
 
+**Freeze the corpus before you ship.** `npm run index -- <corpus-dir> --out <file>` embeds it once, at build
+time, and writes a prebuilt artifact; a reader then fetches vectors instead of embedding anything. That matters
+as soon as the corpus is real: 1.9 MB of documentation measured 96 seconds to index, and 10.6 MB to freeze. The
+artifact is keyed by a hash of the corpus, so it cannot be silently stale.
+
 ## One turn, end to end
 
 ```mermaid

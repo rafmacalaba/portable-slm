@@ -73,11 +73,12 @@ are testable without a browser. `embed.js` is the only place that wires everythi
 ## Commands
 
 ```sh
-npm test                 # 200 tests, no browser, no GPU
+npm test                 # 218 tests, no browser, no GPU
 npm run build:embed      # dist/embed.js + chat.js + logging.js + embed-assets/
 npm run dev              # the web app, chat, catalogue Q&A, field suggestion, benchmark
 npm run e2e              # real Chrome, offline, fixtures
 npm run e2e:retrieval    # real Chrome, retrieval against a generated corpus and index
+npm run index -- <dir> --out <file>   # freeze a corpus into a prebuilt index
 npm run scaffold -- --out <dir> --shape static|record   # a host starting point
 npm run pack:site -- --out <dir> --runtimes onnx        # the bundle subset a host serves
 ```
@@ -105,7 +106,7 @@ Do not "fix" these without a decision and a test:
 
 | absent | why |
 |---|---|
-| a ranker, embeddings, any retrieval | ranking needs the corpus, which is the host's; rung 4 of the context ladder is the seam, and rung 5 is gated on measurement. See `docs/CONTEXT_PROVIDERS.md` |
+| nothing about retrieval | the corpus is the host's, and the chunker, both scorers, the fusion, the embedder and the index format are the SDK's. Rung 5 of the context ladder ships as `context.documents`. See `docs/RETRIEVAL.md` |
 | any write path | the contract is read-only; a host applies changes after a human approves |
 | host knowledge in `src/` | the base layer stays reusable across any host, including hosts written later |
 | a bundled model | weights are hundreds of MB and licensed separately; the store downloads or imports them |
