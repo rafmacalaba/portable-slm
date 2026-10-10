@@ -16,7 +16,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync
 import { join } from "node:path";
 import puppeteer from "puppeteer-core";
 import { buildCorpusIndex, createRetrievalContext, indexParams } from "../integrations/retrieval-context.js";
-import { buildIndex, chunkText, serializeIndex } from "../src/retrieval.js";
+import { buildIndex, chunkText, corpusHash, serializeIndex } from "../src/retrieval.js";
 import { DEFAULTS } from "../src/models.js";
 
 const CHROME = process.env.CHROME_PATH ?? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
@@ -85,7 +85,10 @@ async function prebuiltIndex() {
   const chunks = chunkText(CORPUS, { path: "Handbook", targetChars: chunkChars });
   const vectors = new Float32Array(chunks.length * dims);
   chunks.forEach((chunk, i) => vectors.set(embed(chunk.text), i * dims));
-  return serializeIndex(buildIndex({ chunks, vectors, dims, embedderId, corpusVersion: CORPUS_VERSION, chunkChars }));
+  // The runtime hashes what it fetched and refuses an artifact that does not match, so the fixture has to hash
+  // the same text. Without this the artifact is fetched, refused, and the browser indexes the corpus instead.
+  const contentHash = corpusHash([{ text: CORPUS }]);
+  return serializeIndex(buildIndex({ chunks, vectors, dims, embedderId, corpusVersion: CORPUS_VERSION, chunkChars, contentHash }));
 }
 
 const results = [];
