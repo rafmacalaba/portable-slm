@@ -201,6 +201,63 @@ Two things this does not measure: whether the *answer* is good, which needs a ge
 and the floor for a corpus other than this one. The catalogue's default is 0.18 and a host should measure its
 own, which is why the manifest can set it.
 
+## Indexing a documentation set
+
+Measured end to end on a real corpus: a host's own guides, 1.9 MB of markdown ingested from two published
+HTML documentation sites plus an OpenAPI specification.
+
+**The recipe.**
+
+1. **Ingest to markdown.** Crawl the doc root bounded to its own prefix, drop `script`, `style`, `nav`,
+   `header` and `footer`, keep the headings so each page becomes `## <page title>`, and write one file per
+   doc set plus an `index.json` holding the content hash. Stripping the chrome is not cosmetic: it is what
+   makes a chunk mean one topic instead of a menu.
+2. **Two constraints will bite.** The corpus must be **same-origin**, so a host's externally published docs
+   have to be mirrored into its own docroot or served through its own route. And the fetcher **refuses an
+   HTML response**, deliberately, so conversion is mandatory rather than optional.
+3. **Decide frozen or live.** Freeze the reference documentation, because indexing it costs minutes
+   (measured below) and every reader would otherwise pay it. Fetch anything per-record or per-tenant live,
+   because it is small and it changes.
+4. **Declare and measure.** `context.documents` for the doc sets, `retrieval.index` for the frozen artifact,
+   then set the floor from this repository's own harness rather than from the catalogue default.
+
+**Artifact arithmetic.** `chunks x dims x 4 bytes x 1.37` for the base64 JSON. Measured:
+
+| embedder | chunks | index build (CPU) | artifact |
+|---|---|---|---|
+| ternlight at 480 chars | 4,264 | 96 s | 8.6 MB |
+| EmbeddingGemma 2 at 1200 chars | 2,563 | 561 s | 3.4 MB |
+
+**Chunk size follows the embedder, and that is a real cost.** ternlight's 128-token window forces chunks of
+about 480 characters. At 1200 characters the answer text was more likely to fall inside the same chunk as the
+matched term, so keyword-only recall was 8 of 12 against 7 of 12 at 480. That is the input window, not the
+embedding quality.
+
+**Which tier, at this scale.** Twelve questions with a required phrase, five off-corpus questions, same
+corpus both times:
+
+| setting | answer in top 1 | in top 3 | off-corpus returning something (0 is correct) |
+|---|---|---|---|
+| ternlight, keyword only | 7/12 | 10/12 | 4/5 |
+| ternlight, hybrid 0.30 | **9/12** | 10/12 | 4/5 |
+| Gemma, keyword only | 8/12 | 10/12 | 4/5 |
+| Gemma, hybrid 0.65 | **9/12** | **11/12** | 4/5 |
+
+The bundled tier matched the larger one on first place and was one question behind in the top three, with no
+181 MB install for the reader, no WebGPU requirement, and no contention with the generator for the GPU.
+Reach for the larger tier when schema-semantics questions demonstrably fail, and use the same questions to
+show that they now pass.
+
+**Three gaps this exercise exposed, all still open.**
+
+- **A re-ingested corpus can serve stale vectors.** The cached index is validated by chunk count, so a
+  content edit that keeps the count is not noticed. The fix is to hash the fetched corpus into the index key;
+  the manifest's `corpusVersion` is a host's promise, and a promise is not a check.
+- **`context.documents` does not expand `{id}`.** Record, field and declared tools do, so a per-record corpus
+  (the guidance for the template in use, say) cannot be requested even though it is the obvious scope.
+- **No test covers an ingested doc set.** The e2e harness builds a synthetic corpus. Everything above was
+  measured by hand, which is why it belongs in this document rather than in a green checkmark.
+
 ## What is built
 
 Retrieval is the default when a host declares a corpus, and the default embedder is bundled, so a host that
