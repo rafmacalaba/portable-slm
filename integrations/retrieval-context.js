@@ -9,8 +9,8 @@
 import { DEFAULTS, MODELS } from "../src/models.js";
 import { embedDims } from "../src/embedder.js";
 import {
-  CHUNKER_VERSION, RETRIEVAL_DEFAULTS, buildIndex, chunkText, deserializeIndex, indexKey, rankChunks, selectUnderCap,
-  serializeIndex,
+  CHUNKER_VERSION, RETRIEVAL_DEFAULTS, buildIndex, chunkText, corpusHash, deserializeIndex, indexKey, rankChunks,
+  selectUnderCap, serializeIndex,
 } from "../src/retrieval.js";
 import { documents, fetchCredentials, retrievalOptions } from "./host-contract.js";
 import { fetchApp } from "./context-read.js";
@@ -108,23 +108,32 @@ export async function buildCorpusIndex({ manifest, base, fetch: request = global
   const appUrl = manifest.context?.app?.url ? new URL(manifest.context.app.url, base).href : null;
   const indexed = appUrl ? corpus.filter((doc) => doc.url !== appUrl) : corpus;
   const chunks = corpusChunks(indexed, { targetChars: chunkChars });
-  if (!chunks.length) return { index: null, upgrade: null, options, dims, chunkChars, minSimilarity, chunkerVersion: CHUNKER_VERSION };
+  // Hash what is actually indexed, not what was fetched: the app document is supplied always and ranked never,
+  // so including it would invalidate every artifact whenever the help file was edited.
+  const contentHash = corpusHash(indexed);
+  if (!chunks.length) return { index: null, upgrade: null, options, dims, chunkChars, minSimilarity, contentHash, chunkerVersion: CHUNKER_VERSION };
 
   // A prebuilt index is tried first: it needs no embedder, no download and no waiting.
   if (options.index) {
     try {
       const res = await request(new URL(options.index, base).href, { credentials: fetchCredentials(manifest) });
-      if (res.ok) {
+      if (!res.ok) {
+        onStatus(`prebuilt index unavailable: HTTP ${res.status}`, "warn");
+      } else {
         const prebuilt = deserializeIndex(await res.text());
-        if (prebuilt?.key === indexKey({ corpusVersion, embedderId: prebuilt.embedderId, dims: prebuilt.dims, chunkChars })) {
-          // The prebuilt artifact carries its own chunk text, which must still match the corpus on disk:
-          // a stale artifact would answer from content the host has since edited.
-          const same = prebuilt.chunks.length === chunks.length
-            && prebuilt.chunks.every((chunk, i) => chunk.text === chunks[i].text);
-          if (same) return { index: prebuilt, upgrade: null, options, dims, chunkChars, minSimilarity, source: "prebuilt", chunkerVersion: CHUNKER_VERSION };
-          onStatus("prebuilt index does not match the corpus on disk; rebuilding", "warn");
-        } else if (prebuilt) {
-          onStatus("prebuilt index was built for a different corpus or embedder; rebuilding", "warn");
+        if (!prebuilt) {
+          // Every reason deserializeIndex refuses: wrong format, a chunker this build does not use, a vector
+          // blob whose length disagrees with the chunk count. Without this the fallback was silent, and a
+          // silently refused artifact looks exactly like a corpus that answers badly.
+          onStatus("prebuilt index was refused: wrong format, chunker version, or vector length", "warn");
+        } else if (prebuilt.key !== indexKey({ corpusVersion, embedderId: prebuilt.embedderId, dims: prebuilt.dims, chunkChars, contentHash })) {
+          onStatus("prebuilt index was built for a different corpus, embedder or chunking; rebuilding", "warn");
+        } else {
+          // No separate comparison of the chunk text: the content hash in the key is order-independent and
+          // covers exactly that, and the chunker version and chunk size are in the key too. Comparing the texts
+          // instead made the order a host lists its documents in a correctness requirement, which is how this
+          // was refused twice while both sides were provably identical in content.
+          return { index: prebuilt, upgrade: null, options, dims, chunkChars, minSimilarity, contentHash, source: "prebuilt", chunkerVersion: CHUNKER_VERSION };
         }
       }
     } catch (err) {
@@ -132,7 +141,7 @@ export async function buildCorpusIndex({ manifest, base, fetch: request = global
     }
   }
 
-  const key = indexKey({ corpusVersion, embedderId: modelId, dims, chunkChars });
+  const key = indexKey({ corpusVersion, embedderId: modelId, dims, chunkChars, contentHash });
   if (storage) {
     try {
       const cached = deserializeIndex(await storage.get(key));
@@ -143,7 +152,7 @@ export async function buildCorpusIndex({ manifest, base, fetch: request = global
   }
 
   // BM25 answers now. This is the floor, not a fallback: it needs no model and works offline.
-  const lexical = buildIndex({ chunks, embedderId: "bm25", corpusVersion, chunkChars });
+  const lexical = buildIndex({ chunks, embedderId: "bm25", corpusVersion, chunkChars, contentHash });
   if (!embedder?.status) return { index: lexical, upgrade: null, options, dims, chunkChars, minSimilarity, source: "bm25", chunkerVersion: CHUNKER_VERSION };
 
   return {
@@ -153,6 +162,7 @@ export async function buildCorpusIndex({ manifest, base, fetch: request = global
     dims,
     chunkChars,
     minSimilarity,
+    contentHash,
     chunkerVersion: CHUNKER_VERSION,
     upgrade: (async () => {
       const status = await embedder.status(modelId);
@@ -172,7 +182,7 @@ export async function buildCorpusIndex({ manifest, base, fetch: request = global
         embedded.forEach((vector, i) => vectors.set(vector, (start + i) * dims));
         onStatus(`indexing ${Math.min(start + EMBED_BATCH, chunks.length)} of ${chunks.length} sections`);
       }
-      const index = buildIndex({ chunks, vectors, dims, embedderId: modelId, corpusVersion, chunkChars });
+      const index = buildIndex({ chunks, vectors, dims, embedderId: modelId, corpusVersion, chunkChars, contentHash });
       if (storage) await storage.put(key, serializeIndex(index)).catch(() => {});
       return { index, source: "embedded" };
     })().catch((err) => ({ index: lexical, source: "bm25", reason: err.message })),

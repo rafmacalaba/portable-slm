@@ -10,6 +10,8 @@
  * Bump when chunk boundaries change. It is part of the cache key, so an index built by an older
  * chunker is rebuilt rather than silently half-matching the current one.
  */
+import { createSha256 } from "./sha256.js";
+
 export const CHUNKER_VERSION = 1;
 
 /** Defaults a manifest may override. Chosen for prose with headings, which is what most corpora are. */
@@ -326,24 +328,40 @@ export function selectUnderCap(ranked, { maxBytes = RETRIEVAL_DEFAULTS.maxBytes 
 }
 
 /**
+ * The identity of the corpus content itself.
+ *
+ * Documents are sorted before hashing, so the same content hashes the same whether it was listed in one order
+ * or another, and whether the paths were file names or manifest labels. That is what lets a build-time tool
+ * and the runtime agree: the manifest's `corpusVersion` is a host's promise that the content changed, and a
+ * promise is not a check, which is how a re-ingested corpus can serve stale vectors.
+ */
+export function corpusHash(corpus) {
+  const hash = createSha256();
+  for (const text of corpus.map((doc) => doc.text).sort()) {
+    hash.update(new TextEncoder().encode(text));
+  }
+  return hash.hex().slice(0, 16);
+}
+
+/**
  * The identity of an index. Change any input and the old vectors are discarded rather than reused:
  * a 768-dim index answering a 256-dim query, or a corpus that has moved on, produces confident
  * nonsense with no error anywhere, which is the failure mode this key exists to make impossible.
  */
-export function indexKey({ corpusVersion = "0", embedderId = "bm25", dims = 0, chunkerVersion = CHUNKER_VERSION, chunkChars = 0 } = {}) {
-  return `pslm-index/v1/${corpusVersion}/${embedderId}/${dims}/${chunkerVersion}/${chunkChars}`;
+export function indexKey({ corpusVersion = "0", embedderId = "bm25", dims = 0, chunkerVersion = CHUNKER_VERSION, chunkChars = 0, contentHash = "" } = {}) {
+  return `pslm-index/v1/${corpusVersion}/${embedderId}/${dims}/${chunkerVersion}/${chunkChars}/${contentHash}`;
 }
 
 /** Build the in-memory index `rankChunks` reads. Vectors are flat: chunk i occupies [i*dims, (i+1)*dims). */
-export function buildIndex({ chunks, vectors = null, dims = 0, embedderId = "bm25", corpusVersion = "0", chunkChars = 0 }) {
+export function buildIndex({ chunks, vectors = null, dims = 0, embedderId = "bm25", corpusVersion = "0", chunkChars = 0, contentHash = "" }) {
   // The index owns the numbering, and it is positional because the vectors are stored that way. Taking the
   // chunks as given would carry each document's own numbering into a shared address space where it collides.
   const numbered = chunks.map((chunk, position) => (chunk.index === position ? chunk : { ...chunk, index: position }));
   return {
     chunks: numbered,
     vectors: vectors ? Float32Array.from(vectors) : null,
-    dims, embedderId, corpusVersion, chunkChars,
-    key: indexKey({ corpusVersion, embedderId, dims, chunkChars }),
+    dims, embedderId, corpusVersion, chunkChars, contentHash,
+    key: indexKey({ corpusVersion, embedderId, dims, chunkChars, contentHash }),
   };
 }
 
@@ -401,6 +419,7 @@ export function serializeIndex(index) {
     dims: index.dims,
     corpusVersion: index.corpusVersion,
     chunkChars: index.chunkChars ?? 0,
+    contentHash: index.contentHash ?? "",
     chunkerVersion: CHUNKER_VERSION,
     chunks: index.chunks.map((chunk) => ({ id: chunk.id, index: chunk.index, path: chunk.path || "", heading: chunk.heading || "", text: chunk.text })),
     vectors: index.vectors ? encodeVector(new Uint8Array(index.vectors.buffer, index.vectors.byteOffset, index.vectors.byteLength)) : null,
@@ -432,5 +451,6 @@ export function deserializeIndex(json, { chunkerVersion = CHUNKER_VERSION } = {}
     embedderId: parsed.embedderId || "bm25",
     corpusVersion: parsed.corpusVersion || "0",
     chunkChars: parsed.chunkChars ?? 0,
+    contentHash: parsed.contentHash ?? "",
   });
 }

@@ -89,7 +89,8 @@
     "pack:site": "node tools/site-pack.mjs",
     "scaffold": "node tools/scaffold.mjs",
     "e2e:retrieval": "npm run build:embed && node e2e/retrieval.mjs",
-    "eval:retrieval": "node tools/eval-retrieval.mjs"
+    "eval:retrieval": "node tools/eval-retrieval.mjs",
+    "index": "node tools/build-index.mjs"
   },
   "devDependencies": {
     "puppeteer-core": "^25.12.0",

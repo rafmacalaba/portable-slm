@@ -4,7 +4,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   CHUNKER_VERSION, buildIndex, bm25, chunkText, cosine, decodeVector, deserializeIndex, encodeVector,
-  indexKey, matryoshka, normalize, rankChunks, selectUnderCap, serializeIndex, tokenize,
+  corpusHash, indexKey, matryoshka, normalize, rankChunks, selectUnderCap, serializeIndex, tokenize,
 } from "../src/retrieval.js";
 
 const DOC = `# Study handbook
@@ -128,6 +128,15 @@ test("selectUnderCap respects the cap, reports what it dropped, and marks a trun
   assert.ok(single.text.includes("truncated to fit"));
 });
 
+test("a corpus hash makes a stale index impossible, not merely unlikely", () => {
+  // The manifest's corpusVersion is a promise that the content changed; the hash is the check. Without it a
+  // re-ingested corpus whose chunk count happened to match would be served from cache.
+  const docs = [{ text: "one document" }, { text: "another" }];
+  assert.equal(corpusHash(docs), corpusHash([...docs].reverse()), "order must not matter");
+  assert.notEqual(corpusHash(docs), corpusHash([{ text: "one document" }, { text: "another!" }]));
+  assert.match(corpusHash(docs), /^[0-9a-f]{16}$/);
+});
+
 test("indexKey changes with every input, so stale vectors cannot be reused", () => {
   const base = indexKey({ corpusVersion: "1", embedderId: "e", dims: 256, chunkerVersion: 1 });
   assert.notEqual(base, indexKey({ corpusVersion: "2", embedderId: "e", dims: 256, chunkerVersion: 1 }));
@@ -137,7 +146,8 @@ test("indexKey changes with every input, so stale vectors cannot be reused", () 
   // Chunk size belongs in the key: the same corpus at 480-char and 1200-char chunks is two indexes, and
   // comparing vectors built from different text is the failure the key exists to prevent.
   assert.notEqual(base, indexKey({ corpusVersion: "1", embedderId: "e", dims: 256, chunkerVersion: 1, chunkChars: 480 }));
-  assert.match(base, new RegExp(`/${CHUNKER_VERSION}/0$`));
+  assert.match(base, new RegExp(`/${CHUNKER_VERSION}/0/$`), "the hash is the last component, empty when unknown");
+  assert.notEqual(base, indexKey({ corpusVersion: "1", embedderId: "e", dims: 256, contentHash: "abc" }));
 });
 
 test("a serialized index round-trips, vectors and ranking intact", () => {

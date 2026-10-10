@@ -221,7 +221,15 @@ HTML documentation sites plus an OpenAPI specification.
 4. **Declare and measure.** `context.documents` for the doc sets, `retrieval.index` for the frozen artifact,
    then set the floor from this repository's own harness rather than from the catalogue default.
 
-**Artifact arithmetic.** `chunks x dims x 4 bytes x 1.37` for the base64 JSON. Measured:
+**Freezing it.** `npm run index -- <corpus-dir> --out <file>` builds the artifact from the bundled tier: it
+chunks at that embedder's chunk size, embeds every chunk in Node, and writes `serializeIndex` output. Measured
+on the corpus above it reported `4264 chunks, embedded in 96 s (45 chunks/s), artifact 10.6 MB`. Do not reach
+for `--corpus-version` unless the manifest declares the same string: the content hash is the check, and a
+version mismatch is a silent fall back to keyword search.
+
+**Artifact arithmetic.** `chunks x dims x 4 bytes x 1.37` for the base64 vectors, **plus the chunk text**, which
+the artifact carries so a reader needs only one file. That is why 4,264 chunks at 384 dims is 10.6 MB rather
+than the 8.6 MB the vector arithmetic alone suggests. Measured:
 
 | embedder | chunks | index build (CPU) | artifact |
 |---|---|---|---|
@@ -248,15 +256,30 @@ The bundled tier matched the larger one on first place and was one question behi
 Reach for the larger tier when schema-semantics questions demonstrably fail, and use the same questions to
 show that they now pass.
 
-**Three gaps this exercise exposed, all still open.**
+**Gaps this exercise exposed.**
 
-- **A re-ingested corpus can serve stale vectors.** The cached index is validated by chunk count, so a
-  content edit that keeps the count is not noticed. The fix is to hash the fetched corpus into the index key;
-  the manifest's `corpusVersion` is a host's promise, and a promise is not a check.
+Closed since it was written:
+
+- **A re-ingested corpus could serve stale vectors.** The index key now carries `corpusHash`, a hash of the
+  indexed documents sorted so that order and path spelling cannot change it. A changed corpus is a different
+  key, so a stale artifact or cache entry is impossible rather than unlikely, and the manifest's
+  `corpusVersion` stops being load-bearing.
+- **Comparing chunk text made document order a correctness requirement.** The runtime refused an artifact whose
+  chunk text was listed in a different order than the builder sorted it, which is how a provably identical
+  corpus was rejected twice. The key covers that now, and the comparison is gone.
+- **A refused artifact failed silently.** Every path that cannot use a declared index now says so, because a
+  silently refused artifact looks exactly like a corpus that answers badly.
+
+Still open:
+
 - **`context.documents` does not expand `{id}`.** Record, field and declared tools do, so a per-record corpus
   (the guidance for the template in use, say) cannot be requested even though it is the obvious scope.
-- **No test covers an ingested doc set.** The e2e harness builds a synthetic corpus. Everything above was
-  measured by hand, which is why it belongs in this document rather than in a green checkmark.
+- **A host must remember that `dist/` is what its container serves.** Rebuilding the SDK is not enough; the
+  bundle has to be rebuilt, and a stale bundle refuses a new artifact with the old code's rules. This cost two
+  debugging rounds here and is worth a line in a host's own notes.
+- **No test covers an ingested documentation corpus.** The suite now covers an artifact's acceptance, its
+  refusal when the corpus changes, and document order, all against a small fixture. It still does not ingest a
+  real doc set, so the numbers above remain hand-measured.
 
 ## What is built
 

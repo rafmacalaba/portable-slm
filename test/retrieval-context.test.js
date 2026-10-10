@@ -3,7 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { buildCorpusIndex, corpusChunks, createRetrievalContext, fetchCorpus } from "../integrations/retrieval-context.js";
-import { buildIndex, indexKey, serializeIndex } from "../src/retrieval.js";
+import { buildIndex, corpusHash, indexKey, serializeIndex } from "../src/retrieval.js";
 import { indexParams } from "../integrations/retrieval-context.js";
 import { HOST_API_VERSION } from "../integrations/host-contract.js";
 import { DEFAULTS } from "../src/models.js";
@@ -136,7 +136,10 @@ test("a prebuilt index is used as-is, and a stale one is refused rather than ans
   // 1200-char chunks of one corpus are different indexes, and the runtime refuses the one it did not build.
   const { dims, chunks: chunkChars, embedderId } = indexParams(DEFAULTS.embedder, {});
   const chunks = corpusChunks(await fetchCorpus(manifest(), BASE, { fetch: textFetch({ "/handbook.md": DOC }) }), { targetChars: chunkChars });
-  const fresh = buildIndex({ chunks, vectors: new Float32Array(chunks.length * dims), dims, embedderId, corpusVersion: "0", chunkChars });
+  // A builder must hash what it ingested, because the runtime hashes what it fetched. An artifact without the
+  // hash is refused, which is the point: a promise about freshness is not a check.
+  const contentHash = corpusHash([{ text: DOC }]);
+  const fresh = buildIndex({ chunks, vectors: new Float32Array(chunks.length * dims), dims, embedderId, corpusVersion: "0", chunkChars, contentHash });
   const files = { "/handbook.md": DOC, "/pslm.index.json": serializeIndex(fresh) };
   const provider = createRetrievalContext({
     manifest: manifest({ retrieval: { index: "/pslm.index.json", dims, corpusVersion: "0" } }),
@@ -214,4 +217,49 @@ test("alpha 0 skips the query embedding rather than computing something multipli
   const before = embedded;
   await provider.onContext("embargo release");
   assert.equal(embedded, before, "a question must not be embedded when the embedding weight is zero");
+});
+
+test("a frozen artifact is accepted whatever order the manifest lists its documents", async () => {
+  // The bug this pins down: the artifact builder sorted its files, the manifest declared them in another order,
+  // and the runtime compared chunk text position by position, so a provably identical corpus was refused and
+  // the session silently fell back to keyword search. The content hash is order-independent; the comparison
+  // that was not, is gone.
+  const { dims, chunks: chunkChars, embedderId } = indexParams(DEFAULTS.embedder, {});
+  const files = { "/first.md": "# First\n\nalpha content about identifiers", "/second.md": "# Second\n\nbravo content about embargoes" };
+  // Built the way tools/build-index.mjs does it: sorted by path.
+  const built = Object.entries(files).map(([url, text]) => ({ path: url, text })).sort((a, b) => a.path.localeCompare(b.path));
+  const chunks = corpusChunks(built, { targetChars: chunkChars });
+  const artifact = serializeIndex(buildIndex({
+    chunks, vectors: new Float32Array(chunks.length * dims), dims, embedderId, corpusVersion: "0", chunkChars,
+    contentHash: corpusHash(built),
+  }));
+
+  // The runtime fetches in the order the manifest declares, which here is the reverse.
+  const declared = {
+    apiVersion: HOST_API_VERSION, app: { name: "App", version: "1.0.0" },
+    context: { app: { url: "/app.md" }, documents: [{ url: "/second.md" }, { url: "/first.md" }] },
+    retrieval: { index: "/pslm.index.json" },
+    writeBack: false,
+  };
+  const request = textFetch({ ...files, "/app.md": "# App\n\nan application", "/pslm.index.json": artifact });
+  const provider = createRetrievalContext({ manifest: declared, base: BASE, fetch: request, storage: memStorage() });
+  const ready = await provider.ready();
+  assert.equal(provider.source, "prebuilt", `expected the artifact to be accepted, got ${provider.source}`);
+  assert.match(ready.note, /prebuilt index/);
+  assert.match(await provider.onContext("embargoes"), /bravo content/);
+});
+
+test("a declared artifact that cannot be used says so instead of failing silently", async () => {
+  const warnings = [];
+  const manifest = {
+    apiVersion: HOST_API_VERSION, app: { name: "App", version: "1.0.0" },
+    context: { app: { url: "/app.md" }, documents: [{ url: "/first.md" }] },
+    retrieval: { index: "/pslm.index.json" },
+    writeBack: false,
+  };
+  const request = textFetch({ "/first.md": "# First\n\nalpha", "/app.md": "# App" , "/pslm.index.json": "not an index" });
+  const provider = createRetrievalContext({ manifest, base: BASE, fetch: request, storage: memStorage(), onStatus: (m, l) => warnings.push(`${l}: ${m}`) });
+  await provider.ready();
+  assert.notEqual(provider.source, "prebuilt");
+  assert.ok(warnings.some((w) => /refused/.test(w)), `a refusal must be reported, got: ${warnings.join(" | ")}`);
 });
