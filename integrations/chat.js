@@ -9,6 +9,7 @@ import { createLocalSLM } from "../src/index.js";
 import { MODELS } from "../src/models.js";
 import { assessCompleteness, describeIncomplete } from "../src/completeness.js";
 import { defaultTools } from "../src/tools.js";
+import { blocksFromMarkdown } from "./markdown.js";
 import { buildMessages, composeContext, DIRECT_REPLY_NOTE, formatGrounding, lexicalGrounding, parseMarkdown, resolveTools, routesDirect, toolInstructions } from "./chat-core.js";
 
 // Shared by the element's shadow styles and the host-facing panel template, so a formatted answer
@@ -147,10 +148,15 @@ function runsToNodes(runs) {
  * would let a pasted `**` look like the assistant's emphasis), and never for the "what was sent"
  * disclosure — the audit view shows exactly what went in, markers and all.
  */
-export function renderMarkdown(text) {
+export async function renderMarkdown(text) {
   const box = document.createElement("div");
   box.className = "md";
-  for (const block of parseMarkdown(text)) {
+  // Spec parsing when it is available, the built-in subset when it is not. The parser is a separate chunk
+  // fetched on first render, so a host serving a partial pack still renders an answer rather than failing.
+  let blocks;
+  try { blocks = await blocksFromMarkdown(text); }
+  catch { blocks = parseMarkdown(text); }
+  for (const block of blocks) {
     if (block.type === "code") {
       const pre = document.createElement("pre");
       const code = document.createElement("code");
@@ -714,7 +720,10 @@ ${composed.text}`);
       if (!result.text?.trim() && !answer.textContent.trim()) this.#state("the model returned no text", "warn");
       // Streamed as plain text, because markup is not parseable until its pair closes mid-token;
       // formatted once, here, over the complete answer. #history and the disclosure keep the raw text.
-      if (result.text?.trim()) { endThinking(`responded in ${((Date.now() - thinkStart) / 1000).toFixed(1)}s`); answer.replaceChildren(renderMarkdown(result.text), prov); }
+      if (result.text?.trim()) {
+        endThinking(`responded in ${((Date.now() - thinkStart) / 1000).toFixed(1)}s`);
+        answer.replaceChildren(await renderMarkdown(result.text), prov);
+      }
       else {
         // The parse is authoritative. Anything still in the bubble was streamed before the parser
         // knew it was reasoning; drop it rather than leave analysis sitting under an answer label.

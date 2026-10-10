@@ -1,0 +1,122 @@
+[
+ {
+  "section": "Thematic breaks",
+  "markdown": "_ _ _ _ a\n\na------\n\n---a---\n",
+  "text": "_ _ _ _ a a------ ---a---"
+ },
+ {
+  "section": "ATX headings",
+  "markdown": "# foo\n## foo\n### foo\n#### foo\n##### foo\n###### foo\n",
+  "text": "foo foo foo foo foo foo"
+ },
+ {
+  "section": "ATX headings",
+  "markdown": "#5 bolt\n\n#hashtag\n",
+  "text": "#5 bolt #hashtag"
+ },
+ {
+  "section": "ATX headings",
+  "markdown": "# foo *bar* \\*baz\\*\n",
+  "text": "foo bar *baz*"
+ },
+ {
+  "section": "ATX headings",
+  "markdown": "### foo \\###\n## foo #\\##\n# foo \\#\n",
+  "text": "foo ### foo ### foo #"
+ },
+ {
+  "section": "ATX headings",
+  "markdown": "Foo bar\n# baz\nBar foo\n",
+  "text": "Foo bar baz Bar foo"
+ },
+ {
+  "section": "Fenced code blocks",
+  "markdown": "```ruby\ndef foo(x)\n  return 3\nend\n```\n",
+  "text": "def foo(x) return 3 end"
+ },
+ {
+  "section": "Fenced code blocks",
+  "markdown": "~~~~    ruby startline=3 $%@#$\ndef foo(x)\n  return 3\nend\n~~~~~~~\n",
+  "text": "def foo(x) return 3 end"
+ },
+ {
+  "section": "Paragraphs",
+  "markdown": "aaa\nbbb\n\nccc\nddd\n",
+  "text": "aaa bbb ccc ddd"
+ },
+ {
+  "section": "Block quotes",
+  "markdown": "    > # Foo\n    > bar\n    > baz\n",
+  "text": "> # Foo > bar > baz"
+ },
+ {
+  "section": "Block quotes",
+  "markdown": ">     code\n\n>    not code\n",
+  "text": "code not code"
+ },
+ {
+  "section": "List items",
+  "markdown": "A paragraph\nwith two lines.\n\n    indented code\n\n> A block quote.\n",
+  "text": "A paragraph with two lines. indented code A block quote."
+ },
+ {
+  "section": "List items",
+  "markdown": "1234567890. not ok\n",
+  "text": "1234567890. not ok"
+ },
+ {
+  "section": "List items",
+  "markdown": "    indented code\n\nparagraph\n\n    more code\n",
+  "text": "indented code paragraph more code"
+ },
+ {
+  "section": "List items",
+  "markdown": "foo\n*\n\nfoo\n1.\n",
+  "text": "foo * foo 1."
+ },
+ {
+  "section": "List items",
+  "markdown": "    1.  A paragraph\n        with two lines.\n\n            indented code\n\n        > A block quote.\n",
+  "text": "1. A paragraph with two lines. indented code > A block quote."
+ },
+ {
+  "section": "List items",
+  "markdown": "  1.  A paragraph\n    with two lines.\n",
+  "text": "A paragraph with two lines."
+ },
+ {
+  "section": "List items",
+  "markdown": "- foo\n - bar\n  - baz\n   - boo\n",
+  "text": "foo bar baz boo"
+ },
+ {
+  "section": "Lists",
+  "markdown": "The number of windows in my house is\n14.  The number of doors is 6.\n",
+  "text": "The number of windows in my house is 14. The number of doors is 6."
+ },
+ {
+  "section": "Lists",
+  "markdown": "The number of windows in my house is\n1.  The number of doors is 6.\n",
+  "text": "The number of windows in my house is The number of doors is 6."
+ },
+ {
+  "section": "Lists",
+  "markdown": "- a\n - b\n  - c\n   - d\n  - e\n - f\n- g\n",
+  "text": "a b c d e f g"
+ },
+ {
+  "section": "Emphasis and strong emphasis",
+  "markdown": "a * foo bar*\n",
+  "text": "a * foo bar*"
+ },
+ {
+  "section": "Emphasis and strong emphasis",
+  "markdown": "*$*alpha.\n\n*£*bravo.\n\n*€*charlie.\n",
+  "text": "*$*alpha. *£*bravo. *€*charlie."
+ },
+ {
+  "section": "Emphasis and strong emphasis",
+  "markdown": "пристаням_стремятся_\n",
+  "text": "пристаням_стремятся_"
+ }
+]

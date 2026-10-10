@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { blocksFromMarkdown } from "../integrations/markdown.js";
 import { test } from "node:test";
 import { assistantSystemPrompt, buildMessages, composeContext, DEFAULT_CONTEXT, formatGrounding, lexicalGrounding, parseInline,
   parseMarkdown, resolveTools, routesDirect, stripDecorativeMarkdown, toolInstructions } from "../integrations/chat-core.js";
@@ -274,4 +276,27 @@ test("consecutive quote lines become one callout", () => {
   const blocks = parseMarkdown("> Note: a demo record.\n> Second line.\n\nAfter.");
   assert.deepEqual(blocks.map((b) => b.type), ["quote", "p"]);
   assert.match(blocks[0].runs.map((r) => r.v).join(""), /Second line/);
+});
+
+test("the spec subset this renderer satisfies stays satisfied", async () => {
+  // Vendored from CommonMark's own suite (test/fixtures/markdown-spec.json), the cases this renderer already
+  // gets right. The full 652-case suite is a tool you run by fetching spec.json; this is the ratchet, so a
+  // future change that breaks a common shape fails here instead of reaching a reader.
+  const cases = JSON.parse(readFileSync(new URL("./fixtures/markdown-spec.json", import.meta.url), "utf8"));
+  assert.ok(cases.length >= 20, `expected a meaningful fixture, found ${cases.length}`);
+  const runs = (list = []) => list.map((r) => r.v ?? "").join("");
+  const visible = (blocks) => {
+    const out = [];
+    for (const b of blocks) {
+      if (b.type === "code") out.push(b.text);
+      else if (b.type === "list") for (const item of b.items) { out.push(runs(item.runs)); for (const sub of item.sub) out.push(runs(sub)); }
+      else if (b.type === "table") for (const row of [b.header, ...b.rows]) for (const cell of row) out.push(runs(cell));
+      else if (b.type === "p" || b.type === "heading" || b.type === "quote") out.push(runs(b.runs));
+    }
+    return out.join(" ").replace(/\s+/g, " ").trim();
+  };
+  for (const test_ of cases) {
+    const got = visible(await blocksFromMarkdown(test_.markdown));
+    assert.equal(got, test_.text, `spec case from "${test_.section}" regressed:\n${JSON.stringify(test_.markdown)}`);
+  }
 });

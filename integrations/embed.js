@@ -462,7 +462,7 @@ function mount(root, { manifest, ai, version, base = window.location.origin, ass
           snapshot: JSON.parse(file.text),
           modelId: state.model,
         });
-        renderDraft(result, { pointer, label: `Description of ${file.context.datafile.file_name}`, fileId: file.context.datafile.file_id });
+        await renderDraft(result, { pointer, label: `Description of ${file.context.datafile.file_name}`, fileId: file.context.datafile.file_id });
       } catch (err) { setState(err.message, "err"); }
       return;
     }
@@ -481,27 +481,29 @@ function mount(root, { manifest, ai, version, base = window.location.origin, ass
         snapshot: JSON.parse(field.text),
         modelId: state.model,
       });
-      renderDraft(result, { pointer, label: $("[data-pointers]").selectedOptions[0]?.textContent || pointer, fileId: null });
+      await renderDraft(result, { pointer, label: $("[data-pointers]").selectedOptions[0]?.textContent || pointer, fileId: null });
     } catch (err) {
       setState(err.message, "err");
     }
   }
 
-  function renderDraft(result, { pointer, label, fileId }) {
+  async function renderDraft(result, { pointer, label, fileId }) {
     const out = $("[data-out]");
     if (result.formatValid) {
       // Formatted for reading; the value handed to Copy and to Fill is the plain text the model
-      // returned (already decoratively normalised in metadata-review), so what you see is what
-      // lands in the field.
-      out.replaceChildren(...[["Suggestion", result.suggestion], ["Reason", result.reason]]
-        .map(([entry, value]) => {
-          const section = document.createElement("div");
-          section.className = "kv";
-          const title = document.createElement("b");
-          title.textContent = entry;
-          section.append(title, renderMarkdown(value));
-          return section;
-        }));
+      // returned (already decoratively normalised in field-suggest), so what you see is what lands in
+      // the field. A loop rather than a map, because the renderer is now async and replaceChildren
+      // cannot take promises.
+      const sections = [];
+      for (const [entry, value] of [["Suggestion", result.suggestion], ["Reason", result.reason]]) {
+        const section = document.createElement("div");
+        section.className = "kv";
+        const title = document.createElement("b");
+        title.textContent = entry;
+        section.append(title, await renderMarkdown(value));
+        sections.push(section);
+      }
+      out.replaceChildren(...sections);
       $("[data-copy]").hidden = false;
       $("[data-copy]").dataset.value = result.suggestion;
       state.draft = {
