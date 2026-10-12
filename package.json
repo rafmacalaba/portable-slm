@@ -83,7 +83,7 @@
     "preview": "vite preview",
     "build:embed": "vite build --config vite.embed.config.js && vite build --config vite.chat.config.js && vite build --config vite.logging.config.js && node tools/embed-assets.mjs && node tools/version-stamp.mjs",
     "build:extension": "vite build --config integrations/chrome-extension/vite.config.js",
-    "test": "node --test test/",
+    "test": "node --test \"test/*.test.js\"",
     "lint:docs": "node tools/lint-docs.mjs",
     "audit:bundle": "node tools/audit-bundle.mjs",
     "e2e": "npm run build && node e2e/offline.mjs",
