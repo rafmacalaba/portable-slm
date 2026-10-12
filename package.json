@@ -81,16 +81,18 @@
     "dev": "vite",
     "build": "vite build && node tools/version-stamp.mjs",
     "preview": "vite preview",
+    "build:embed": "vite build --config vite.embed.config.js && vite build --config vite.chat.config.js && vite build --config vite.logging.config.js && node tools/embed-assets.mjs && node tools/version-stamp.mjs",
     "build:extension": "vite build --config integrations/chrome-extension/vite.config.js",
     "test": "node --test test/",
+    "lint:docs": "node tools/lint-docs.mjs",
+    "audit:bundle": "node tools/audit-bundle.mjs",
     "e2e": "npm run build && node e2e/offline.mjs",
-    "e2e:extension": "npm run build:extension && node e2e/extension.mjs",
-    "build:embed": "vite build --config vite.embed.config.js && vite build --config vite.chat.config.js && vite build --config vite.logging.config.js && node tools/embed-assets.mjs && node tools/version-stamp.mjs",
-    "pack:site": "node tools/site-pack.mjs",
-    "scaffold": "node tools/scaffold.mjs",
     "e2e:retrieval": "npm run build:embed && node e2e/retrieval.mjs",
+    "e2e:extension": "npm run build:extension && node e2e/extension.mjs",
     "eval:retrieval": "node tools/eval-retrieval.mjs",
-    "index": "node tools/build-index.mjs"
+    "index": "node tools/build-index.mjs",
+    "scaffold": "node tools/scaffold.mjs",
+    "pack:site": "node tools/site-pack.mjs"
   },
   "devDependencies": {
     "puppeteer-core": "^25.12.0",

@@ -71,7 +71,7 @@ wrong:
 | Authorized reads | `host-contract.js` from the manifest, incl. `fitToolResult` bounding | the endpoints, their ACL, the byte caps |
 | Put a draft into a form | cancelable `pslm-fill-request` / `pslm-datafile-fill` | the form binding (the SDK never writes) |
 | One line of feedback to the curator | `[data-pslm-note]` element | the element and its styling |
-| A debug trail | `logging.js` + `buildLogPayload`/`logFieldsFor` | the endpoint ([§logging](#logging)) |
+| A debug trail | `logging.js` + `buildLogPayload`/`logFieldsFor` | the endpoint ([§8c](#8c-logging)) |
 | Verify the integration | `host-check.html` | running it and pasting the report |
 | Answer-quality signals | `completeness.js` (finished?), `byteCap`, `lexicalGrounding` | acting on them |
 

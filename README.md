@@ -98,8 +98,15 @@ naming in the interface. A visitor to a public site should be told what they are
 
 ## What it guarantees
 
-- **Where the computation happens.** The model runs in the tab. There is no inference endpoint, no key, and no
-  telemetry, and nothing you type leaves the machine.
+Each of these is held by a check rather than by this paragraph: [`ci.yml`](.github/workflows/ci.yml) runs
+the unit suite, the documentation gate, the bundle audit and the retrieval suite in real Chrome on every push.
+
+- **Where the computation happens.** The model runs in the tab: no inference endpoint, no key, no telemetry.
+  Nothing reaches a third party unless the host declares a network tool and a person approves each of its
+  calls, and nothing leaves the device unless the host attaches a debug log of its own, which posts only to
+  an endpoint the host declares and does carry the question and the answer
+  ([§8c](docs/HOST_CONTRACT.md#8c-logging)). With neither declared, the bundle issues no mutating request
+  and no third-party request at all.
 - **What was installed.** Model bytes are pinned to an immutable revision and verified by SHA-256 regardless of
   whether they came from the network, a mirror, or a file the user picked.
 - **That it works without a network.** Once the shell and the weights are on the device, inference needs
@@ -107,8 +114,9 @@ naming in the interface. A visitor to a public site should be told what they are
 - **That it cannot write.** There is no path from the model to a host write API. A draft reaches a form only
   when a person clicks, through the host's own input and validation.
 - **That everything reaching the model is bounded and disclosed.** Byte caps on context and tool results, a
-  window that drops the oldest exchanges and says so, at most five tool calls per turn, and an audit view
-  showing the exact prompt that was sent.
+  window that drops the oldest exchanges and says so, at most five tool calls per turn, and a disclosure,
+  *What was sent to the model*, naming the system instructions and the exact context block that went in.
+  The history and the question are not repeated there, because they are already on screen above it.
 
 ## What that means for use
 

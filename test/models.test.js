@@ -28,3 +28,26 @@ test("wllama GGUF models remain registered and unchanged for existing hosts", ()
   assert.equal(MODELS["lfm2.5-350m-q4km"].format, "GGUF");
   assert.equal(MODELS["lfm2.5-350m-q4km"].runtime, undefined);
 });
+
+// The guarantee README states is about every downloadable byte, not just the ONNX exports, and one of
+// the GGUF tiers is the default a bare mount installs. So the rule is written over the whole registry:
+// if it is fetched, it is pinned and hashed. The one exemption is argued for below, in code.
+test("every model a host could download is pinned to a revision and verified by SHA-256", () => {
+  const downloadable = Object.entries(MODELS).filter(([, model]) => model.files?.length || model.url);
+  for (const [id, model] of downloadable) {
+    const urls = model.files?.length ? model.files.map((file) => file.url) : [model.url];
+    const hashes = model.files?.length ? model.files.map((file) => file.sha256) : [model.sha256];
+    for (const url of urls) {
+      assert.match(url, /\/resolve\/[a-f0-9]{40}\//, `${id}: ${url} is not pinned to an immutable revision`);
+    }
+    for (const sha of hashes) {
+      assert.match(sha, /^[a-f0-9]{64}$/, `${id}: a file carries no SHA-256 to verify against`);
+    }
+  }
+  // Nothing was left out by accident: the only model not in the set is the embedder that ships inside
+  // the package, so there is no download to pin and no revision to trust, and it says so by naming the
+  // npm package its weights arrive in.
+  const exempt = Object.keys(MODELS).filter((id) => !downloadable.some(([pid]) => pid === id));
+  assert.deepEqual(exempt, ["ternlight-base"]);
+  assert.equal(MODELS["ternlight-base"].package, "@ternlight/base");
+});

@@ -573,8 +573,9 @@ export class PslmChat extends HTMLElement {
       question,
       maxHistory: this.maxHistory,
     });
-    // The disclosure shows everything the model receives, not just the context: the system
-    // instructions are the part users are never shown elsewhere, so they are disclosed here.
+    // The disclosure carries the two parts a reader cannot see anywhere else: the system instructions and
+    // the context block composed for this question. The history and the question are already in the
+    // transcript above, so repeating them here would only bury the part that matters.
     this.#setSent(`[Instructions to the model]
 ${system || "(none)"}
 

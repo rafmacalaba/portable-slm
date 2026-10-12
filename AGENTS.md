@@ -73,15 +73,24 @@ are testable without a browser. `embed.js` is the only place that wires everythi
 ## Commands
 
 ```sh
-npm test                 # 218 tests, no browser, no GPU
+npm test                 # unit suite: no browser, no GPU
+npm run lint:docs        # links and anchors resolve; core docs name no host, no personal detail
+npm run audit:bundle     # no unallowlisted destination, no mutating request outside logging.js
 npm run build:embed      # dist/embed.js + chat.js + logging.js + embed-assets/
 npm run dev              # the web app, chat, catalogue Q&A, field suggestion, benchmark
 npm run e2e              # real Chrome, offline, fixtures
 npm run e2e:retrieval    # real Chrome, retrieval against a generated corpus and index
+npm run eval:retrieval -- <dir>       # score a corpus against the golden question set
 npm run index -- <dir> --out <file>   # freeze a corpus into a prebuilt index
 npm run scaffold -- --out <dir> --shape static|record   # a host starting point
 npm run pack:site -- --out <dir> --runtimes onnx        # the bundle subset a host serves
 ```
+
+`.github/workflows/ci.yml` runs `npm test`, `npm run lint:docs`, `npm run e2e:retrieval` and
+`npm run audit:bundle` on every push. A change that goes red there is not finished. And a new guarantee
+belongs in one of those checks, not in a paragraph of README: every promise in
+[What it guarantees](README.md#what-it-guarantees) is held by an assertion, and a promise with no assertion
+is not stated.
 
 `dist/` is generated and never committed. The entry points ship under fixed names, so hosts bust their
 cache with `version.json`'s `gitSha`, see `tools/site-pack.mjs` for how the acceptance page does it.

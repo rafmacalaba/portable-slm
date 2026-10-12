@@ -1,0 +1,62 @@
+name: Guarantees
+
+# The claims in README.md are only worth what enforces them. This is that enforcement: a push that
+# breaks a test, a documentation link, a host-agnostic rule, or the bundle a host serves goes red.
+#
+# Two jobs, deliberately separate, so an environment problem in the browser job is not mistaken for
+# a broken guarantee.
+#
+# Not run here, and why:
+#   e2e/offline.mjs        downloads a pinned model and blocks DNS; it needs a device and a cache.
+#   e2e/extension.mjs      loads an unpacked Chrome extension into a real profile.
+#   eval:retrieval         scores a corpus you own; it needs that corpus, so it belongs to the host.
+#   tools/phone-test       a physical device.
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  unit:
+    name: Runtime, contract and docs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      # Retrieval ranking and index keys, the agent loop's bounds, the host contract's validation,
+      # the manifest scaffold both shapes must pass, context readers, and the markdown ratchet:
+      # the CommonMark cases this renderer is required to keep satisfying.
+      - run: npm test
+      # Relative links resolve, `#anchors` resolve, and no core document names a host application,
+      # a personal detail or a retired deployment. Host-specific detail belongs in examples/.
+      - run: npm run lint:docs
+
+  browser:
+    name: Retrieval in real Chrome
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      # Builds the bundle a host serves (embed.js, chat.js, logging.js, embed-assets/) and then runs
+      # the retrieval suite against a real origin in headless Chrome, asserting what reaches the
+      # prompt. The prebuilt-artifact checks skip themselves without PSLM_LOCAL_MODEL pointing at the
+      # pinned embedder weights, so the reported check count is lower here than on a dev machine; the
+      # suite prints its own skips rather than passing silently.
+      - name: Build the host bundle and drive it in Chrome
+        run: npm run e2e:retrieval
+        env:
+          CHROME_PATH: /usr/bin/google-chrome-stable
+      # The "no telemetry, no write path" guarantee, asserted: every absolute URL in our source and in
+      # the built entry points must be on the allowlist in tools/audit-bundle.mjs, and no mutating
+      # request may exist outside logging.js, which posts to an endpoint a host declares for itself.
+      - name: Audit the bundle for destinations and mutating requests
+        run: npm run audit:bundle
