@@ -263,3 +263,48 @@ test("a declared artifact that cannot be used says so instead of failing silentl
   assert.notEqual(provider.source, "prebuilt");
   assert.ok(warnings.some((w) => /refused/.test(w)), `a refusal must be reported, got: ${warnings.join(" | ")}`);
 });
+
+test("the embedder download is announced before it is fetched, naming the bytes awaited", async () => {
+  const seen = [];
+  let atLoad = null;
+  const embedder = {
+    status: async () => ({ state: "installed" }),
+    _ready: false,
+    get loaded() { return this._ready ? { dims: 384, device: "wasm" } : null; },
+    async load() { atLoad = [...seen]; this._ready = true; return { dims: 384 }; },
+    embed: async (texts) => (Array.isArray(texts) ? texts : [texts]).map(() => new Float32Array(384)),
+  };
+  const provider = createRetrievalContext({
+    manifest: manifest({ retrieval: { dims: 384, corpusVersion: "v1" } }),
+    base: BASE, fetch: textFetch({ "/handbook.md": DOC }), storage: memStorage(), embedder,
+    onStatus: (m, l) => seen.push(`${l}: ${m}`),
+  });
+  await provider.ready();
+  await provider.onContext("embargo release");
+  assert.ok(atLoad, "the fake embedder should have been loaded, or there is nothing to assert about");
+  assert.ok(atLoad.some((s) => /loading the embedder, about 13\.6 MB/.test(s)),
+    `the reader must be told what is about to be fetched, before it is. statuses at load: ${atLoad.join(" | ")}`);
+});
+
+// Weight zero was documented as "the semantic half is not used at all" and enforced only on the query
+// half, so a keyword-only host still downloaded the engine and embedded its whole corpus in the
+// background, for vectors that were then multiplied by nothing.
+test("alpha zero means no engine and no background embedding, not just an unweighted query", async () => {
+  const seen = [];
+  let loaded = false;
+  const embedder = {
+    status: async () => ({ state: "installed" }),
+    get loaded() { return loaded ? { dims: 384 } : null; },
+    async load() { loaded = true; return { dims: 384 }; },
+    embed: async () => { throw new Error("nothing may be embedded while the semantic weight is zero"); },
+  };
+  const provider = createRetrievalContext({
+    manifest: manifest({ retrieval: { dims: 384, alpha: 0, corpusVersion: "v1" } }),
+    base: BASE, fetch: textFetch({ "/handbook.md": DOC }), storage: memStorage(), embedder,
+    onStatus: (m, l) => seen.push(`${l}: ${m}`),
+  });
+  const out = await provider.onContext("embargo release");
+  assert.match(out, /Access policy/, "keyword search still answers the question");
+  assert.equal(loaded, false, "a zero weight means the engine is not worth a download");
+  assert.ok(!seen.some((s) => /loading the embedder/.test(s)), `nothing should be announced, got: ${seen.join(" | ")}`);
+});

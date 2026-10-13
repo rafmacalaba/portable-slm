@@ -136,10 +136,13 @@ Rules:
   `tasks` means every task this build ships; naming the subset is how a host disables one, and a
   task that is not allowlisted gets **no tab**, not a disabled one.
 - Missing manifest → L0 behaviour, everything still works.
-- `models.mirror` is an optional same-origin directory holding the pinned GGUF files. Install tries
-  the mirror first, then the upstream URL; SHA-256 verification stays client-side either way, so a
-  mirror cannot substitute different bytes. The mirror needs HTTP range requests (the store
-  downloads in 16 MB chunks).
+- `models.mirror` is an optional same-origin directory holding the pinned files. Install tries the mirror
+  first **per file**, then the upstream URL, so a partial mirror still works and only the missing files
+  reach upstream. Two layouts, matching what the catalogue declares: a single-file GGUF at
+  `<mirror>/<file>`, and a multi-file ONNX export at `<mirror>/<model-id>/<path>`. SHA-256 verification
+  stays client-side either way, so a mirror cannot substitute different bytes: a file whose hash disagrees
+  is refused rather than installed. The mirror needs HTTP range requests (the store downloads in 16 MB
+  chunks).
 - Host APIs that redirect an expired session to a login page with HTTP 200 and HTML are detected
   by content type and reported as "your host session has expired", not as a JSON parse error.
 

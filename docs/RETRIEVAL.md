@@ -56,7 +56,15 @@ does not match the current corpus. The browser path checks the prebuilt file fir
 - **`retrieval.dims`** is a Matryoshka truncation of the embedder's 768 (`768`, `512`, `256`, `128`).
   Lower is smaller and faster to compare; 256 is the default and quarters the index size. It is part of
   the cache key, so changing it rebuilds rather than mixing vector spaces.
-- **`retrieval.alpha`** is the embedding weight. `0` is BM25 alone, `1` is embeddings alone.
+- **`retrieval.alpha`** is the embedding weight. `0` is BM25 alone, `1` is embeddings alone. At `0` the
+  runtime fetches no embedder, requests no prebuilt artifact and embeds nothing in the background: the
+  weight is checked before all three paths, because a vector multiplied by zero is a download spent on
+  nothing. Measured on the 1.9 MB documentation corpus, `0` returns the right section first for 7 of 12
+  questions against 9 of 12 at `0.5`, and asks the reader for nothing.
+- **The engine is announced, not assumed.** Before the embedder is fetched the panel reports
+  `loading the embedder, about 13.6 MB, once on this device`. That download lands between a question and
+  its answer, where silence reads as a hang, and the size is taken from the catalogue rather than typed
+  into a message.
 - **`retrieval.embedder`** picks the tier, or refuses one: `"auto"` (the default tier), a catalogue id such as
   `"embeddinggemma-2-text-q4f16"`, or `"none"` for keyword search over the same corpus with **no embedder
   runtime fetched at all**. `"none"` is a real choice rather than a degraded state, and `alpha: 0` reaches the
@@ -68,7 +76,7 @@ does not match the current corpus. The browser path checks the prebuilt file fir
 
 | | **ternlight** (default) | **EmbeddingGemma 2 text** (quality) |
 |---|---|---|
-| install | **nothing.** The model ships inside the package | ~181 MB, downloaded once, pinned by revision and per-file SHA-256 |
+| install | **nothing to host.** The weights ship inside the package; a browser still fetches the built chunk, 13.6 MB, once per device | ~181 MB, downloaded once, pinned by revision and per-file SHA-256 |
 | speed | **1.49 ms** per embedding, measured over 200 runs | 44 s for 249 chunks on CPU, which is why it wants a prebuilt index |
 | dimensions | 384, no Matryoshka training | 768, MRL to 512 / 256 / 128 |
 | input | 128 tokens, so chunks are 480 characters | 8K tokens, so chunks are 1200 characters |

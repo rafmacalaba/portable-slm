@@ -58,16 +58,18 @@ answered from the sections that match it, rather than one document cut at the by
 "retrieval": { "topK": 5, "maxBytes": 6144 }
 ```
 
-The default embedder is bundled with the SDK, so there is nothing to install, no revision to pin and no
-weight file to host: BM25 answers the first question immediately and the embeddings join in milliseconds.
-Freeze the corpus once and every reader fetches vectors instead of embedding it: `npm run index -- <corpus-dir>
---out <file>` writes a prebuilt artifact, keyed by a hash of the corpus so it can never be silently stale.
-Indexing a 1.9 MB documentation corpus measured 96 seconds; frozen, that cost is paid once, at build time, and
-never by a reader. `"retrieval": { "index": "/pslm.index.json" }` declares it.
+The default embedder ships inside the package, so there is no revision to pin and no weight file to host.
+BM25 answers the first question with nothing fetched at all; when the semantic half is wanted the browser
+fetches one 13.6 MB chunk, once per device, and the panel names that size before it starts. Freezing the
+corpus removes the reader's embedding work, not that chunk: `npm run index -- <corpus-dir> --out <file>`
+writes a prebuilt artifact keyed by a hash of the corpus, so it can never be silently stale. Indexing a
+1.9 MB documentation corpus measured 96 seconds over 4,264 chunks; frozen, that is paid once at build time
+and never by a reader. `"retrieval": { "index": "/pslm.index.json" }` declares it.
 
-`"retrieval": { "embedder": "none" }` opts out to keyword search with nothing fetched at all, and
-`"embedder": "embeddinggemma-2-text-q4f16"` asks for the larger pinned model instead. Both tiers are measured
-against your own corpus rather than argued about: [RETRIEVAL.md](docs/RETRIEVAL.md).
+`"retrieval": { "embedder": "none" }` opts out to keyword search with nothing fetched at all, and so does
+`{ "alpha": 0 }`, which additionally skips a declared artifact. `"embedder": "embeddinggemma-2-text-q4f16"`
+asks for the larger pinned model instead. Both tiers are measured against your own corpus rather than
+argued about: [RETRIEVAL.md](docs/RETRIEVAL.md).
 
 ## Models
 

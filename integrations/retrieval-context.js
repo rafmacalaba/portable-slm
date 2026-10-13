@@ -21,6 +21,20 @@ export const MAX_DOCUMENT_BYTES = 2 * 1024 * 1024;
 /** How many chunks are embedded per call. Small enough to keep a tab responsive and to report progress. */
 const EMBED_BATCH = 8;
 
+/**
+ * Say what the engine costs before fetching it. It arrives between a question and its answer, and 13 MB
+ * of silence reads as a hang; the model install path already names its download, and retrieval was the
+ * one path that did not. `#what-it-guarantees` in the README says a visitor should be told what they are
+ * about to fetch, and this is that sentence for the embedder.
+ */
+function announceEngine(onStatus, modelId) {
+  const spec = MODELS[modelId] ?? {};
+  const bytes = spec.bytes ?? spec.files?.reduce((total, file) => total + (file.bytes ?? 0), 0);
+  onStatus(bytes
+    ? `loading the embedder, about ${(bytes / 1e6).toFixed(1)} MB, once on this device`
+    : "loading the embedder", "info");
+}
+
 const enc = new TextEncoder();
 
 /** Cache Storage, so an index survives a reload without the corpus being re-embedded. */
@@ -112,9 +126,14 @@ export async function buildCorpusIndex({ manifest, base, fetch: request = global
   // so including it would invalidate every artifact whenever the help file was edited.
   const contentHash = corpusHash(indexed);
   if (!chunks.length) return { index: null, upgrade: null, options, dims, chunkChars, minSimilarity, contentHash, chunkerVersion: CHUNKER_VERSION };
+  // Zero weight means the semantic half is not used at all, so nothing on this path should spend a
+  // download or a minute of CPU on vectors that are then multiplied by nothing. The rule was written for
+  // the query and enforced only there, which left a keyword-only host embedding its whole corpus in the
+  // background for no reader's benefit.
+  const semantic = (options.alpha ?? DEFAULTS.retrieval.alpha) !== 0;
 
   // A prebuilt index is tried first: it needs no embedder, no download and no waiting.
-  if (options.index) {
+  if (semantic && options.index) {
     try {
       const res = await request(new URL(options.index, base).href, { credentials: fetchCredentials(manifest) });
       if (!res.ok) {
@@ -153,7 +172,9 @@ export async function buildCorpusIndex({ manifest, base, fetch: request = global
 
   // BM25 answers now. This is the floor, not a fallback: it needs no model and works offline.
   const lexical = buildIndex({ chunks, embedderId: "bm25", corpusVersion, chunkChars, contentHash });
-  if (!embedder?.status) return { index: lexical, upgrade: null, options, dims, chunkChars, minSimilarity, source: "bm25", chunkerVersion: CHUNKER_VERSION };
+  if (!embedder?.status || !semantic) {
+    return { index: lexical, upgrade: null, options, dims, chunkChars, minSimilarity, source: "bm25", chunkerVersion: CHUNKER_VERSION };
+  }
 
   return {
     index: lexical,
@@ -170,7 +191,10 @@ export async function buildCorpusIndex({ manifest, base, fetch: request = global
         // Not an error: the session is already answering. The panel can offer the download.
         return { index: lexical, source: "bm25", reason: "embedder not installed" };
       }
-      await embedder.load(modelId);
+      if (!embedder.loaded) {
+        announceEngine(onStatus, modelId);
+        await embedder.load(modelId);
+      }
       const vectors = new Float32Array(chunks.length * dims);
       for (let start = 0; start < chunks.length; start += EMBED_BATCH) {
         const batch = chunks.slice(start, start + EMBED_BATCH);
@@ -240,7 +264,10 @@ export function createRetrievalContext({ manifest, base, fetch: request = global
     // Weight zero means the semantic half is not used at all, so embedding the question would spend a
     // download and milliseconds to multiply by nothing.
     if ((state.options.alpha ?? DEFAULTS.retrieval.alpha) === 0) return null;
-    if (!embedder.loaded) await embedder.load(tier);
+    if (!embedder.loaded) {
+      announceEngine(onStatus, tier);
+      await embedder.load(tier);
+    }
     return embedder;
   }
 

@@ -104,10 +104,14 @@ export const MODELS = {
 // revision to pin and nothing for the store to verify: the dependency is the pin. 1.5 ms per embedding
 // measured on CPU, which is what makes indexing a corpus in the browser affordable at all.
 MODELS["ternlight-base"] = {
-  label: "ternlight base (384d · ~7 MB, bundled)",
+  label: "ternlight base (384d, bundled)",
   kind: "embedding",
   runtime: "ternlight", tier: "default",
   package: "@ternlight/base", version: "0.1.1",
+  // What a browser actually fetches for this embedder: the built chunk, measured at 13,645,253 bytes in
+  // `dist/index.browser-*.js`. The weights inside the package are smaller than that, which is why the
+  // number is stated as wire bytes rather than model bytes: it is the figure a reader is waiting on.
+  bytes: 13645253,
   dims: 384, mrl: [384], ctx: 128, chunkChars: 480, pooling: "model",
   // Measured on 8 in-corpus and 6 out-of-corpus questions: the best in-corpus match scored 0.26 to 0.65
   // and the best out-of-corpus match 0.00 to 0.12. 0.18 sits in that gap. It is a heuristic that reduces
