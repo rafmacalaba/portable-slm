@@ -7,7 +7,7 @@ export const HOST_API_VERSION = "pslm-host/1";
 // change, never a host change. `source` in the helpers says *whose* metadata is being read —
 // the task id says *what operation* runs, and is what the manifest allowlist and the result
 // envelope name.
-export const TASKS = ["pslm.chat", "pslm.suggest-field", "pslm.suggest-datafile-description"];
+export const TASKS = ["pslm.chat", "pslm.suggest-field", "pslm.suggest-datafile-description", "pslm.suggest-resource-description"];
 
 /** A manifest that omits `tasks` gets every task this SDK ships (L1 default). */
 export function allowsTask(manifest, task) {

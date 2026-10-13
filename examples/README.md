@@ -149,3 +149,17 @@ host's live authentication.
 - The metadata editor's live authenticated API was exercised against a local deployment, with fixtures in
   the automated tests. A private deployment with different access rules should be re-checked, which is what
   [`../portable-slm/host-check.html`](../integrations/host-check.html) is for.
+
+## Filling a form from a document the curator attached
+
+A record editor that lets a curator attach a PDF or CSV can draft the fields of that record from the
+attachment, in the tab, without a second upload. The host side is one listener that answers for its own
+DOM (`pslm-document-request`, see [`../docs/HOST_CONTRACT.md`](../docs/HOST_CONTRACT.md)) and a listener
+for the per-field `pslm-fill-request` it already had. What the host must decide, and the SDK will not:
+
+- **Which fields are on screen.** Offer the visible ones. A form with several sections in the DOM at
+  once will otherwise let a document draft itself into a section the curator is not looking at.
+- **What a controlled list accepts.** A draft that matches one of the list's own options can be applied;
+  anything else should be refused with the options named, because a near miss looks like a save.
+- **Nothing else.** The PDF parser, the text extraction, the prompt and the field validation are the
+  SDK's; the file never leaves the tab, and no apply button is a write.

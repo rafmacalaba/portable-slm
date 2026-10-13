@@ -1,0 +1,17 @@
+{
+  "runtime": "pdf.js",
+  "version": "6.0.227",
+  "license": "Apache-2.0",
+  "source": "https://www.npmjs.com/package/pdfjs-dist/v/6.0.227",
+  "why": "Text extraction from an attached PDF, in the browser, so the bytes never leave the tab. Fetched only when a PDF is actually attached.",
+  "files": {
+    "pdf.min.mjs": {
+      "bytes": 447810,
+      "sha256": "71ab6d3ace0b285cc1feaf88f943b84238bf875f7a005674ac448a78940913bd"
+    },
+    "pdf.worker.min.mjs": {
+      "bytes": 1245448,
+      "sha256": "9e3b3b7da0760e8468f4b20490cceab481a96b700803a96c46b0bb00d2e3741e"
+    }
+  }
+}

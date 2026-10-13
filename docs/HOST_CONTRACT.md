@@ -70,6 +70,7 @@ wrong:
 | Tell the assistant what the reader is looking at | `pslm-route-change` (host dispatches, SDK consumes) | one line in the router's `afterEach` |
 | Authorized reads | `host-contract.js` from the manifest, incl. `fitToolResult` bounding | the endpoints, their ACL, the byte caps |
 | Put a draft into a form | cancelable `pslm-fill-request` / `pslm-datafile-fill` | the form binding (the SDK never writes) |
+| Read a document the form holds | cancelable `pslm-document-request` | the `File` and the fields to fill (the SDK never queries the host's DOM) |
 | One line of feedback to the curator | `[data-pslm-note]` element | the element and its styling |
 | A debug trail | `logging.js` + `buildLogPayload`/`logFieldsFor` | the endpoint ([§8c](#8c-logging)) |
 | Verify the integration | `host-check.html` | running it and pasting the report |
@@ -373,6 +374,38 @@ Implemented: two paths, both human-triggered, both leaving the write to the host
   accept** rather than implying success. The SDK never queries a host write API, never touches the
   host's store, and never saves: the text lands in an input as an unsaved edit, so `writeBack` is
   still `false` and host-side diff/review/save stays exactly as it is.
+
+### Reading a document the host's form holds
+
+A curator attaching a questionnaire to an external resource wants the description filled from it, and
+the bytes are already in the tab. The panel asks; the host answers for its own DOM, because which
+element holds the file and which fields are on screen is host knowledge and stays in host code:
+
+```js
+document.addEventListener("pslm-document-request", (event) => {
+  // detail is an object the host fills in: { file, fields, note }
+  const input = document.querySelector("input[type=file]");     // the host knows where its own is
+  if (!input?.files.length) { event.detail.note = "Attach a document in the form first."; return; }
+  event.detail.file = input.files[0];
+  event.detail.fields = [
+    { key: "title", label: "Title", current: "" },
+    { key: "dctype", label: "Resource type", current: "doc/rep" },
+  ];
+});
+```
+
+- **`file`** is the `File` the curator picked, read in this tab. A PDF is parsed by pdf.js here, so the
+  document is not uploaded for the sake of a draft, and a draft abandoned before upload never left the
+  browser. The parser is vendored and fetched only when a PDF is actually attached.
+- **`fields`** is the only list the model is told it may write into. Keys are identifier-shaped; a key
+  the host did not offer is dropped on the way back and counted, never displayed as if it were usable.
+  Current values are passed along so the model does not restate what the curator already typed.
+- **`note`** refuses in a sentence the curator sees. That is how "no document attached yet" and "this
+  PDF has no text layer" reach a person instead of surfacing as a parse error.
+- The answer arrives as one row per field with its own apply button, and every click is a separate
+  `pslm-fill-request`. There is deliberately no "fill everything": twelve inputs changed by one click
+  is a draft nobody reviewed, and the save button stays the curator's.
+- Task id **`pslm.suggest-resource-description`**. A host that does not declare it gets no picker entry.
 
 a host's listener is a few dozen lines with no build step, and it is worth a runnable fixture: one that
 mounts a real form control and drives the handshake through the host's own model binding, asserting the

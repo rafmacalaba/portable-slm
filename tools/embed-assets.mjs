@@ -17,6 +17,11 @@ const WANTED = {
   onnxMjs: "onnxruntime-web/ort-wasm-simd-threaded.asyncify.mjs",
 };
 
+// pdf.js is vendored rather than installed: it is a runtime a host serves, like the wasm below, and
+// only ever fetched when a curator attaches a PDF. Its version, source and SHA-256 are recorded in
+// `vendor/pdfjs/manifest.json`, and a unit test re-hashes the files, so a silent edit is caught.
+const VENDORED = { pdfjs: "pdf.min.mjs", pdfjsWorker: "pdf.worker.min.mjs" };
+
 const assets = {};
 for (const [key, specifier] of Object.entries(WANTED)) {
   const from = require.resolve(specifier);
@@ -24,6 +29,12 @@ for (const [key, specifier] of Object.entries(WANTED)) {
   const name = `${key}.${ext}`;
   copyFileSync(from, join(outDir, name));
   assets[key] = `./embed-assets/${name}`;
+}
+
+mkdirSync("dist/pdfjs", { recursive: true });
+for (const [key, name] of Object.entries(VENDORED)) {
+  copyFileSync(`vendor/pdfjs/${name}`, join("dist/pdfjs", name));
+  assets[key] = `./pdfjs/${name}`;
 }
 
 writeFileSync("dist/embed-assets.json", `${JSON.stringify(assets, null, 2)}\n`);

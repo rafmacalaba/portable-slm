@@ -7,7 +7,8 @@
 import { createLocalSLM } from "../src/index.js";
 import { MODELS } from "../src/models.js";
 import { defaultTools } from "../src/tools.js";
-import { SUGGEST_FIELD_TASK, suggestMetadata } from "./field-suggest.js";
+import { SUGGEST_FIELD_TASK, SUGGEST_RESOURCE_TASK, suggestMetadata, suggestResourceFields } from "./field-suggest.js";
+import { extractDocumentText } from "./document-text.js";
 import {
   allowsTask, byteCap, buildHostTools, DECLARED_POINTERS, expand, fileSubjectChanged, fitToolResult,
   hostTools, mountMode, validateManifest,
@@ -192,7 +193,7 @@ function mount(root, { manifest, ai, version, base = window.location.origin, ass
     const switched = fileSubjectChanged(state.fileId, next);
     state.fileId = next;
     if (switched) chat.clear();
-    refreshDatafileTab();
+  refreshDatafileTab();
   };
   root.addEventListener("pslm-datafile-change", onFileChange);
   // The host router announces every navigation (section label + file id). The section becomes a
@@ -466,6 +467,26 @@ function mount(root, { manifest, ai, version, base = window.location.origin, ass
       } catch (err) { setState(err.message, "err"); }
       return;
     }
+    if (pointer === "@document") {
+      const detail = requestDocument();
+      if (detail.note) return setState(detail.note, "warn");
+      setState(`reading ${detail.file.name}…`);
+      let read;
+      try {
+        read = await extractDocumentText(detail.file, { assets, onStatus: (m) => setState(m) });
+      } catch (err) { return setState(err.message, "err"); }
+      if (read.note) return setState(read.note, "warn");
+      showSent(read.text, read.truncated);
+      setState("suggesting locally…");
+      try {
+        const result = await suggestResourceFields(ai, {
+          source: manifest?.app?.name || "unspecified host",
+          document: read.text, fields: detail.fields, modelId: state.model,
+        });
+        await renderFields(result, { file: detail.file, read });
+      } catch (err) { setState(err.message, "err"); }
+      return;
+    }
     setState("reading field…");
     let field;
     try {
@@ -519,7 +540,7 @@ function mount(root, { manifest, ai, version, base = window.location.origin, ass
       // pslm-fill-request. Each only when the host opted in.
       $("[data-fill]").hidden = !(root.hasAttribute("data-fill") && (fileId ? datafileMode : mode.fill));
     } else {
-      out.textContent = `Model output was not valid JSON (${result.error}).\n\n${result.raw}`;
+      out.textContent = `No draft: ${result.error}${result.raw ? `\n\nModel said: ${result.raw}` : ""}`;
       state.draft = null;
       $("[data-fill]").hidden = true;
     }
@@ -538,6 +559,74 @@ function mount(root, { manifest, ai, version, base = window.location.origin, ass
       },
     }));
     setState("ready", "ok");
+  }
+
+  /**
+   * Ask the host for the document its form is holding, and for the fields to fill.
+   *
+   * The panel never looks for a file input: which element holds the curator's file, and which of the
+   * form's fields are on screen, is the host's DOM and the host's knowledge. The host answers by
+   * setting `detail.file` and `detail.fields` on the event it was handed, and may set `detail.note` to
+   * say why there is nothing to read. Nothing is fetched from the host here: the bytes are the ones
+   * the curator just picked, still in this tab.
+   */
+  function requestDocument() {
+    const detail = { file: null, fields: [], note: "" };
+    root.dispatchEvent(new CustomEvent("pslm-document-request", { bubbles: true, cancelable: true, detail }));
+    if (detail.note) return detail;
+    if (!detail.file) return { note: "The form has no document attached yet. Choose a file in the resource form, then ask again." };
+    if (!detail.fields.length) return { note: "The host named no fields to fill, so there is nothing this document could write into." };
+    return detail;
+  }
+
+  /**
+   * One row per field, one button per field. There is deliberately no "fill everything": a draft that
+   * touches twelve inputs in one click is a draft nobody reviewed, and the curator's own save button is
+   * the only thing that ever persists anything.
+   */
+  async function renderFields(result, { file, read }) {
+    const out = $("[data-out]");
+    $("[data-fill]").hidden = true;
+    if (!result.formatValid) {
+      // The reason, not an assumed diagnosis: an empty reply and a malformed one need different fixes.
+      out.textContent = `No draft: ${result.error}${result.raw ? `\n\nModel said: ${result.raw}` : ""}`;
+      state.draft = null;
+      return setState("ready", "ok");
+    }
+    out.replaceChildren();
+    for (const entry of result.entries) {
+      const row = document.createElement("div");
+      row.className = "kv";
+      const title = document.createElement("b");
+      title.textContent = entry.label;
+      const apply = document.createElement("button");
+      apply.type = "button";
+      apply.textContent = `Fill ${entry.label}`;
+      apply.addEventListener("click", () => {
+        const accepted = !root.dispatchEvent(new CustomEvent("pslm-fill-request", {
+          bubbles: true, cancelable: true,
+          detail: { task: result.task, recordId: root.dataset.recordId, pointer: entry.key, label: entry.label, suggestion: entry.value },
+        }));
+        apply.textContent = accepted ? `Filled ${entry.label}` : `No editor field for ${entry.label}`;
+        if (accepted) window.setTimeout(() => { apply.textContent = `Fill ${entry.label}`; }, 4000);
+      });
+      const why = document.createElement("i");
+      why.textContent = entry.reason;
+      row.append(title, apply, await renderMarkdown(entry.value), why);
+      out.append(row);
+    }
+    state.draft = null;
+    provenance([`task ${result.task}`, `model ${state.model}`, `document ${file.name} (${read.pages ?? 1} page${read.pages === 1 ? "" : "s"})`,
+      read.truncated ? "document truncated" : "document read in full", result.engine, "shape check only — not factual review"]);
+    root.dispatchEvent(new CustomEvent("pslm-suggest", {
+      bubbles: true,
+      detail: {
+        task: result.task, model: state.model, engine: result.engine ?? null, recordId: root.dataset.recordId,
+        document: { name: file.name, bytes: file.size, kind: read.kind, truncated: Boolean(read.truncated) },
+        formatValid: true, entries: result.entries, dropped: result.dropped,
+      },
+    }));
+    setState(result.dropped ? `${result.entries.length} fields drafted, ${result.dropped} dropped` : `${result.entries.length} fields drafted`, "ok");
   }
 
   // A datafile mount adds one picker entry for the open file's Description; the host announces
@@ -660,7 +749,8 @@ function mount(root, { manifest, ai, version, base = window.location.origin, ass
   }
   // A manifest allowlist is a real allowlist: a task the host did not declare gets no tab rather
   // than a disabled one, so the host never advertises a capability it switched off.
-  const allowed = { chat: allowsTask(manifest, "pslm.chat"), suggest: mode.suggest && allowsTask(manifest, SUGGEST_FIELD_TASK) };
+  const documentTask = allowsTask(manifest, SUGGEST_RESOURCE_TASK);
+  const allowed = { chat: allowsTask(manifest, "pslm.chat"), suggest: mode.suggest && (allowsTask(manifest, SUGGEST_FIELD_TASK) || documentTask) };
   for (const [name, on] of Object.entries(allowed)) {
     const tab = root.querySelector(`[data-tab=${name}]`);
     tab.hidden = !on;
@@ -673,6 +763,12 @@ function mount(root, { manifest, ai, version, base = window.location.origin, ass
     const option = document.createElement("option");
     option.value = p.pointer;
     option.textContent = p.label || p.pointer;
+    $("[data-pointers]").appendChild(option);
+  }
+  if (documentTask) {
+    const option = document.createElement("option");
+    option.value = "@document";
+    option.textContent = "Attached document \u2192 resource description";
     $("[data-pointers]").appendChild(option);
   }
   refreshDatafileTab();

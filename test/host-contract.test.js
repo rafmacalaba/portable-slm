@@ -72,7 +72,9 @@ test("byteCap reports truncation in bytes, not characters", () => {
 });
 
 test("task allowlist: declared ids gate the UI, an unknown id fails the whole manifest", () => {
-  assert.deepEqual(TASKS, ["pslm.chat", "pslm.suggest-field", "pslm.suggest-datafile-description"]);
+  // Pinned on purpose: a new task id is a new capability a host must be able to switch off, so it
+  // lands here as a deliberate edit rather than as a side effect of someone adding a helper.
+  assert.deepEqual(TASKS, ["pslm.chat", "pslm.suggest-field", "pslm.suggest-datafile-description", "pslm.suggest-resource-description"]);
   assert.equal(allowsTask(manifest(), "pslm.chat"), true);
 
   // A manifest that names no tasks gets what this SDK ships — L1 must stay drop-in.
