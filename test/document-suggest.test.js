@@ -6,7 +6,8 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { documentKind, extractDocumentText, MAX_DOCUMENT_BYTES, MAX_DOCUMENT_CHARS } from "../integrations/document-text.js";
 import {
-  MAX_RESOURCE_FIELDS, parseResourceFields, resourceFields, resourceSuggestMessages, suggestResourceFields, SUGGEST_RESOURCE_TASK,
+  MAX_RESOURCE_FIELDS, outermostJsonObject, parseResourceFields, resourceFields, resourceSuggestMessages,
+  suggestResourceFields, SUGGEST_RESOURCE_TASK,
 } from "../integrations/field-suggest.js";
 
 const file = (name, type, text) => {
@@ -145,4 +146,32 @@ test("the vendored pdf.js is the file the manifest says it is", async () => {
     assert.equal(createHash("sha256").update(bytes).digest("hex"), expected.sha256,
       `${name} does not match vendor/pdfjs/manifest.json — re-vendor it deliberately, do not edit it`);
   }
+});
+
+test("a draft survives a model that explains itself before answering", () => {
+  // Without a grammar there is no guarantee of a bare object, and a preamble is not a bad draft.
+  const wrapped = `Sure, here are the fields:\n{"fields":[{"key":"title","value":"Expert Rankings","reason":"printed title"}]}\nHope that helps.`;
+  const { entries } = parseResourceFields(wrapped, FIELDS);
+  assert.equal(entries[0].value, "Expert Rankings");
+  assert.throws(() => outermostJsonObject("no object here"), /no JSON object/);
+});
+
+test("an engine that cannot honour the grammar is retried without it", async () => {
+  const calls = [];
+  const ai = {
+    async load() {},
+    async generate(messages, options) {
+      calls.push(options.response_format ? "grammar" : "plain");
+      return { engine: "onnx", text: calls.length === 1 ? "" : '{"fields":[{"key":"title","value":"Expert Rankings","reason":"title"}]}' };
+    },
+  };
+  const result = await suggestResourceFields(ai, { source: "Metadata Editor", document: "x".repeat(300), fields: FIELDS, modelId: "m1" });
+  assert.deepEqual(calls, ["grammar", "plain"], "the empty reply must be retried before it is reported");
+  assert.equal(result.formatValid, true);
+
+  const silent = { async load() {}, async generate() { return { engine: "webgpu", text: "" }; } };
+  const quiet = await suggestResourceFields(silent, { source: "Metadata Editor", document: "x".repeat(300), fields: FIELDS, modelId: "m1" });
+  assert.equal(quiet.formatValid, false);
+  assert.match(quiet.error, /no text\. Prompt \d+ characters, grammar not used, engine webgpu/,
+    "the sentence must state facts, not an assumed cause");
 });

@@ -188,8 +188,7 @@ export function resourceSuggestMessages(source, { document, fields }, task = SUG
  */
 export function parseResourceFields(text, fields) {
   const allowed = new Map(resourceFields(fields).map((field) => [field.key, field]));
-  const stripped = String(text ?? "").trim().replace(/^```(?:json)?\s*|\s*```$/g, "");
-  const parsed = JSON.parse(stripped);
+  const parsed = JSON.parse(outermostJsonObject(text));
   const entries = [];
   let dropped = 0;
   for (const item of Array.isArray(parsed?.fields) ? parsed.fields : []) {
@@ -204,18 +203,48 @@ export function parseResourceFields(text, fields) {
 }
 
 /**
+ * The first `{...}` in a reply, ignoring whatever a model wrapped around it. Without a grammar
+ * enforcing the shape — and some engines do not implement one for nested arrays — a small model tends
+ * to explain itself first: `Sure, here are the fields: {...}`. The object is still there and still
+ * valid, and throwing it away because of a preamble loses a good draft.
+ */
+export function outermostJsonObject(text) {
+  const stripped = String(text ?? "").trim().replace(/^```(?:json)?\s*|\s*```$/g, "");
+  if (stripped.startsWith("{")) return stripped;
+  const start = stripped.indexOf("{");
+  const end = stripped.lastIndexOf("}");
+  if (start < 0 || end <= start) throw new Error("Model reply contained no JSON object");
+  return stripped.slice(start, end + 1);
+}
+
+/**
  * Draft an attached resource's description into the fields the host declared. `document` is text already
  * read in this tab by `extractDocumentText`; nothing here fetches a file or writes a record.
+ *
+ * The reply is asked for as JSON, but the grammar is not trusted: `response_format` with an array of
+ * objects is beyond at least one engine in this build, which answers a grammar it cannot satisfy with
+ * nothing at all. An empty reply is therefore retried once without it, and the parse below is tolerant
+ * of a preamble. Validating the shape is cheaper than hoping for a grammar.
  */
 export async function suggestResourceFields(ai, { source, document, fields, modelId = "lfm2.5-350m-q4km", signal } = {}) {
   const messages = resourceSuggestMessages(source, { document, fields });
   await ai.load(modelId);
-  const result = await ai.generate(messages, { maxTokens: 700, temperature: 0, signal, response_format: RESOURCE_OUTPUT_FORMAT });
-  // An empty reply is a different failure from a malformed one and needs a different sentence: the
-  // engine clamps the answer to the window the prompt left, so a full document can leave nothing.
+  let result = await ai.generate(messages, { maxTokens: 700, temperature: 0, signal, response_format: RESOURCE_OUTPUT_FORMAT });
+  let grammar = true;
   if (!String(result.text ?? "").trim()) {
+    // A grammar the engine cannot satisfy is answered with nothing at all, which is indistinguishable
+    // from a model that had nothing to say. Asking again without it costs one generation and tells
+    // them apart, and the tolerant parse below handles the prose a model adds when nothing constrains it.
+    grammar = false;
+    result = await ai.generate(messages, { maxTokens: 700, temperature: 0, signal });
+  }
+  if (!String(result.text ?? "").trim()) {
+    // Facts, not a diagnosis: what was asked and what came back. Whether the prompt filled the window
+    // is visible in the number rather than asserted.
+    const promptChars = messages.reduce((total, message) => total + message.content.length, 0);
     return { task: SUGGEST_RESOURCE_TASK, source, modelId, engine: result.engine, formatValid: false,
-      error: "The model returned nothing — the document left it no room to answer. Try a smaller document or a larger model.", raw: "" };
+      error: `The model returned no text. Prompt ${promptChars} characters, grammar ${grammar ? "requested" : "not used"}, engine ${result.engine ?? "unknown"}.`,
+      raw: "" };
   }
   try {
     return { task: SUGGEST_RESOURCE_TASK, source, modelId, engine: result.engine, formatValid: true, ...parseResourceFields(result.text, fields) };
