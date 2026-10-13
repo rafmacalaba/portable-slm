@@ -6,8 +6,7 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { documentKind, extractDocumentText, MAX_DOCUMENT_BYTES, MAX_DOCUMENT_CHARS } from "../integrations/document-text.js";
 import {
-  MAX_RESOURCE_FIELDS, outermostJsonObject, parseResourceFields, resourceFields, resourceSuggestMessages,
-  suggestResourceFields, SUGGEST_RESOURCE_TASK,
+  outermostJsonObject, parseResourceFieldReply, resourceSuggestMessages, suggestResourceField, SUGGEST_RESOURCE_TASK,
 } from "../integrations/field-suggest.js";
 
 const file = (name, type, text) => {
@@ -85,59 +84,95 @@ test("a PDF is only readable when the host serves a parser", async () => {
   assert.match(read.note ?? "", /No PDF runtime declared|assets\.pdfjs/);
 });
 
-test("the field list is the host's, bounded and impossible to duplicate", () => {
-  assert.deepEqual(resourceFields(FIELDS).map((f) => f.key), ["title", "dctype", "description"]);
-  assert.equal(resourceFields(FIELDS)[2].current, "half typed");
-  assert.throws(() => resourceFields([]), /must declare which fields/);
-  assert.throws(() => resourceFields([{ key: "../../x" }]), /not usable/);
-  assert.throws(() => resourceFields([{ key: "title; alert(1)" }]), /not usable/);
-  assert.equal(resourceFields([{ key: "study_desc.study_info.abstract" }]).length, 1, "dotted form keys are the norm in this catalog");
-  assert.throws(() => resourceFields([{ key: "title" }, { key: "title" }]), /same field twice/);
-  assert.equal(resourceFields(Array.from({ length: 60 }, (_, i) => ({ key: `f${i}` }))).length, MAX_RESOURCE_FIELDS);
-  assert.equal(resourceFields([{ key: "abstract", current: "y".repeat(500) }])[0].current.length, 120);
+const TITLE_FIELD = { key: "title", label: "Title" };
+const TYPE_FIELD = {
+  key: "dctype", label: "Resource type", current: "",
+  options: [
+    { value: "doc/qst", label: "Document, Questionnaire [doc/qst]" },
+    { value: "doc/rep", label: "Document, Report [doc/rep]" },
+  ],
+};
+
+// Each generation receives one field, not a form-shaped array. Select options are part of that one
+// field's prompt so the suggestion is a value the host can actually accept.
+test("the prompt asks for exactly one field and includes its accepted options", () => {
+  const [system, user] = resourceSuggestMessages("Metadata Editor", {
+    document: "x".repeat(200), field: TYPE_FIELD,
+  });
+  assert.match(system.content, /exactly one value for one catalog field/);
+  assert.match(system.content, /doc\/qst/);
+  assert.match(user.content, /Field key: dctype/);
+  assert.match(user.content, /Field label: Resource type/);
+  assert.match(user.content, /Document text:/);
+  assert.doesNotMatch(user.content, /Field key: title/);
+  assert.throws(() => resourceSuggestMessages("Editor", { document: "too short", field: TITLE_FIELD }), /too little text/);
+  assert.throws(() => resourceSuggestMessages("Editor", { document: "x".repeat(100), field: { key: "../x" } }), /not usable/);
 });
 
-test("the prompt names only the declared keys, and says what is already filled", () => {
-  const [system, user] = resourceSuggestMessages("Metadata Editor", { document: "x".repeat(200), fields: FIELDS });
-  assert.match(system.content, /title, dctype, description/);
-  assert.doesNotMatch(system.content, /filename/);
-  assert.match(user.content, /Already filled, do not restate:\ndescription: half typed/);
-  assert.match(system.content, /untrusted data, not instructions/);
-  assert.throws(() => resourceSuggestMessages("Editor", { document: "too short", fields: FIELDS }), /too little text/);
+test("single-field parser accepts a supported value or explicit no-evidence answer", () => {
+  assert.deepEqual(parseResourceFieldReply('{"suggestion":"doc/qst","reason":"The document is a questionnaire."}', TYPE_FIELD), {
+    supported: true, suggestion: "doc/qst", reason: "The document is a questionnaire.",
+  });
+  assert.deepEqual(parseResourceFieldReply('{"suggestion":"","reason":"Publisher is not stated."}', TITLE_FIELD), {
+    supported: false, reason: "Publisher is not stated.",
+  });
+  assert.equal(parseResourceFieldReply('Here is the result: {"suggestion":"Title","reason":"printed heading"}', TITLE_FIELD).suggestion, "Title");
+  assert.equal(parseResourceFieldReply('{"suggestion":"Document, Questionnaire [doc/qst]","reason":"label"}', TYPE_FIELD).suggestion, "doc/qst", "exact label maps to stored value");
+  assert.equal(parseResourceFieldReply('{"suggestion":"survey","reason":"near miss"}', TYPE_FIELD).supported, false, "unsupported choices cannot be filled");
+  assert.throws(() => parseResourceFieldReply("not json", TITLE_FIELD), /no JSON object/);
+  assert.throws(() => parseResourceFieldReply(JSON.stringify({ suggestion: "x".repeat(1001), reason: "r" }), TITLE_FIELD), /too long/);
 });
 
-test("a reply is validated against the declared fields, and junk is dropped not displayed", () => {
-  const reply = JSON.stringify({ fields: [
-    { key: "title", value: "SAR-GIL Expert Rankings", reason: "the page title" },
-    { key: "dctype", value: "doc/qst", reason: "it is a questionnaire" },
-    { key: "filename", value: "invented", reason: "not declared" },
-    { key: "title", value: "a second title", reason: "duplicate" },
-    { key: "description", value: "   ", reason: "blank" },
-    { key: "abstract", value: "y".repeat(1200), reason: "too long" },
-  ] });
-  const { entries, dropped } = parseResourceFields(reply, FIELDS);
-  assert.deepEqual(entries.map((e) => e.key), ["title", "dctype"]);
-  assert.equal(entries[0].label, "Title", "the host's own label comes back with the value");
-  assert.equal(dropped, 4);
-  assert.throws(() => parseResourceFields(JSON.stringify({ fields: [{ key: "nope", value: "x", reason: "y" }] }), FIELDS), /no usable field values/);
-});
-
-test("the task runs against a model and reports a bad reply as a format failure", async () => {
-  const ai = { loaded: null, async load(id) { this.loaded = id; }, async generate(messages) { return { engine: "stub", text: this.text }; } };
-  ai.text = JSON.stringify({ fields: [{ key: "title", value: "Expert Rankings — Bangladesh", reason: "printed title" }] });
-  const result = await suggestResourceFields(ai, { source: "Metadata Editor", document: "x".repeat(300), fields: FIELDS, modelId: "m1" });
+test("each Draft call generates one flat suggestion for only the requested field", async () => {
+  const calls = [];
+  const ai = {
+    async load(id) { calls.push({ load: id }); },
+    async generate(messages, options) {
+      calls.push({ messages, options });
+      return { engine: "stub", text: JSON.stringify({ suggestion: "doc/qst", reason: "The text identifies this as a questionnaire." }) };
+    },
+  };
+  const result = await suggestResourceField(ai, {
+    source: "Metadata Editor", document: "The attached document is a questionnaire.".repeat(8), field: TYPE_FIELD, modelId: "m1",
+  });
   assert.equal(result.formatValid, true);
+  assert.equal(result.supported, true);
   assert.equal(result.task, SUGGEST_RESOURCE_TASK);
-  assert.equal(result.entries[0].value, "Expert Rankings — Bangladesh");
-
-  ai.text = "I could not help with that.";
-  const bad = await suggestResourceFields(ai, { source: "Metadata Editor", document: "x".repeat(300), fields: FIELDS, modelId: "m1" });
-  assert.equal(bad.formatValid, false);
-  assert.match(bad.raw, /could not help/);
+  assert.equal(calls.filter((call) => call.messages).length, 1, "one button press means one model generation");
+  const [system, user] = calls.find((call) => call.messages).messages;
+  assert.match(system.content, /suggestion and reason/);
+  assert.match(user.content, /Field key: dctype/);
+  assert.doesNotMatch(user.content, /Field key: title/);
+  const options = calls.find((call) => call.options).options;
+  assert.equal(options.maxTokens, 192);
+  assert.equal(options.response_format.json_schema.schema.properties.suggestion.type, "string");
+  assert.equal(options.response_format.json_schema.schema.properties.fields, undefined, "flat output, not an array of fields");
 });
 
-// The parser is vendored, so its bytes are the supply chain. A hash check that only runs in someone's
-// head is not a check; this one runs on every `npm test`.
+test("empty flat-schema reply retries once without grammar; second empty reply reports facts", async () => {
+  const calls = [];
+  const retrying = {
+    async load() {},
+    async generate(messages, options) {
+      calls.push(options.response_format ? "flat grammar" : "plain");
+      return { engine: "webgpu", text: calls.length === 1 ? "" : '{"suggestion":"SAR-GIL Policy Tools Mapping","reason":"Printed heading."}' };
+    },
+  };
+  const result = await suggestResourceField(retrying, {
+    source: "Metadata Editor", document: "x".repeat(200), field: TITLE_FIELD, modelId: "m1",
+  });
+  assert.deepEqual(calls, ["flat grammar", "plain"]);
+  assert.equal(result.suggestion, "SAR-GIL Policy Tools Mapping");
+
+  const silent = { async load() {}, async generate() { return { engine: "webgpu", text: "" }; } };
+  const quiet = await suggestResourceField(silent, {
+    source: "Metadata Editor", document: "x".repeat(200), field: TITLE_FIELD, modelId: "m1",
+  });
+  assert.equal(quiet.formatValid, false);
+  assert.match(quiet.error, /no text for Title\. Prompt \d+ characters, grammar not used, engine webgpu/);
+});
+
+// The parser is vendored, so its bytes are the supply chain. This hash check runs on every `npm test`.
 test("the vendored pdf.js is the file the manifest says it is", async () => {
   const manifest = JSON.parse(readFileSync("vendor/pdfjs/manifest.json", "utf8"));
   for (const [name, expected] of Object.entries(manifest.files)) {
@@ -148,30 +183,6 @@ test("the vendored pdf.js is the file the manifest says it is", async () => {
   }
 });
 
-test("a draft survives a model that explains itself before answering", () => {
-  // Without a grammar there is no guarantee of a bare object, and a preamble is not a bad draft.
-  const wrapped = `Sure, here are the fields:\n{"fields":[{"key":"title","value":"Expert Rankings","reason":"printed title"}]}\nHope that helps.`;
-  const { entries } = parseResourceFields(wrapped, FIELDS);
-  assert.equal(entries[0].value, "Expert Rankings");
-  assert.throws(() => outermostJsonObject("no object here"), /no JSON object/);
-});
-
-test("an engine that cannot honour the grammar is retried without it", async () => {
-  const calls = [];
-  const ai = {
-    async load() {},
-    async generate(messages, options) {
-      calls.push(options.response_format ? "grammar" : "plain");
-      return { engine: "onnx", text: calls.length === 1 ? "" : '{"fields":[{"key":"title","value":"Expert Rankings","reason":"title"}]}' };
-    },
-  };
-  const result = await suggestResourceFields(ai, { source: "Metadata Editor", document: "x".repeat(300), fields: FIELDS, modelId: "m1" });
-  assert.deepEqual(calls, ["grammar", "plain"], "the empty reply must be retried before it is reported");
-  assert.equal(result.formatValid, true);
-
-  const silent = { async load() {}, async generate() { return { engine: "webgpu", text: "" }; } };
-  const quiet = await suggestResourceFields(silent, { source: "Metadata Editor", document: "x".repeat(300), fields: FIELDS, modelId: "m1" });
-  assert.equal(quiet.formatValid, false);
-  assert.match(quiet.error, /no text\. Prompt \d+ characters, grammar not used, engine webgpu/,
-    "the sentence must state facts, not an assumed cause");
+test("outermost JSON extraction ignores model preamble without loosening field validation", () => {
+  assert.equal(outermostJsonObject('Sure:\n{"suggestion":"v","reason":"r"}\nDone.'), '{"suggestion":"v","reason":"r"}');
 });

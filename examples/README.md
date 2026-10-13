@@ -159,7 +159,10 @@ for the per-field `pslm-fill-request` it already had. What the host must decide,
 
 - **Which fields are on screen.** Offer the visible ones. A form with several sections in the DOM at
   once will otherwise let a document draft itself into a section the curator is not looking at.
-- **What a controlled list accepts.** A draft that matches one of the list's own options can be applied;
-  anything else should be refused with the options named, because a near miss looks like a save.
-- **Nothing else.** The PDF parser, the text extraction, the prompt and the field validation are the
-  SDK's; the file never leaves the tab, and no apply button is a write.
+- **What a controlled list accepts.** Send each option's stored value and label with that field. Model is
+  asked for one of those exact values; the fill bridge checks against the live select again before apply.
+- **Which fields to draft.** Reading produces a list of per-field Draft buttons, not model output. Each
+  button triggers one generation for that field only, with the same flat `{suggestion, reason}` contract as
+  ordinary field suggestion. User sees and accepts each draft separately; no hidden batch inference.
+- **Nothing else.** The PDF parser, extraction, prompt and reply validation are SDK's; file never leaves
+  the tab, and no apply button is a write.

@@ -7,7 +7,7 @@
 import { createLocalSLM } from "../src/index.js";
 import { MODELS } from "../src/models.js";
 import { defaultTools } from "../src/tools.js";
-import { SUGGEST_FIELD_TASK, SUGGEST_RESOURCE_TASK, suggestMetadata, suggestResourceFields } from "./field-suggest.js";
+import { SUGGEST_FIELD_TASK, SUGGEST_RESOURCE_TASK, suggestMetadata, suggestResourceField } from "./field-suggest.js";
 import { extractDocumentText } from "./document-text.js";
 import {
   allowsTask, byteCap, buildHostTools, DECLARED_POINTERS, expand, fileSubjectChanged, fitToolResult,
@@ -176,7 +176,7 @@ function mount(root, { manifest, ai, version, base = window.location.origin, ass
   const $ = (sel) => root.querySelector(sel);
   // Compact selector name; the full label (size, role) moves to the hover title.
   const shortModel = (id) => MODELS[id]?.label.match(/LFM2\.5-[\d.]+[MB](?:-Instruct)?/)?.[0] || MODELS[id]?.label || id;
-  const state = { model: manifest?.model || DEFAULT_MODEL, installed: false, draft: null, fileId: null, section: root.dataset.section || "" };
+  const state = { model: manifest?.model || DEFAULT_MODEL, installed: false, draft: null, fileId: null, section: root.dataset.section || "", resourceDocument: null, resourceDrafting: false };
   const datafileMode = mode.datafile;
   const datafileContext = () => {
     const fileId = state.fileId || root.dataset.dataFileId || "";
@@ -477,14 +477,9 @@ function mount(root, { manifest, ai, version, base = window.location.origin, ass
       } catch (err) { return setState(err.message, "err"); }
       if (read.note) return setState(read.note, "warn");
       showSent(read.text, read.truncated);
-      setState("suggesting locally…");
-      try {
-        const result = await suggestResourceFields(ai, {
-          source: manifest?.app?.name || "unspecified host",
-          document: read.text, fields: detail.fields, modelId: state.model,
-        });
-        await renderFields(result, { file: detail.file, read });
-      } catch (err) { setState(err.message, "err"); }
+      state.resourceDocument = { file: detail.file, read, text: read.text, fields: detail.fields };
+      renderResourceFields(state.resourceDocument);
+      setState(`Document read. Draft one field at a time from ${detail.fields.length} available fields.`, "ok");
       return;
     }
     setState("reading field…");
@@ -579,54 +574,98 @@ function mount(root, { manifest, ai, version, base = window.location.origin, ass
     return detail;
   }
 
-  /**
-   * One row per field, one button per field. There is deliberately no "fill everything": a draft that
-   * touches twelve inputs in one click is a draft nobody reviewed, and the curator's own save button is
-   * the only thing that ever persists anything.
-   */
-  async function renderFields(result, { file, read }) {
+  // Parsing happens once, before any inference. Each Draft button calls the model for exactly one
+  // field using the proven flat suggestion schema; each returned value has its own Fill button.
+  function renderResourceFields(source) {
     const out = $("[data-out]");
+    state.draft = null;
+    $("[data-copy]").hidden = true;
     $("[data-fill]").hidden = true;
-    if (!result.formatValid) {
-      // The reason, not an assumed diagnosis: an empty reply and a malformed one need different fixes.
-      out.textContent = `No draft: ${result.error}${result.raw ? `\n\nModel said: ${result.raw}` : ""}`;
-      state.draft = null;
-      return setState("ready", "ok");
-    }
     out.replaceChildren();
-    for (const entry of result.entries) {
-      const row = document.createElement("div");
-      row.className = "kv";
+    for (const field of source.fields) {
+      const row = document.createElement("section");
+      row.className = "kv resource-field";
       const title = document.createElement("b");
-      title.textContent = entry.label;
+      title.textContent = field.label;
+      const draft = document.createElement("button");
+      draft.type = "button";
+      draft.className = "resource-draft-button";
+      draft.textContent = `Draft ${field.label}`;
+      const result = document.createElement("div");
+      result.setAttribute("aria-live", "polite");
+      draft.addEventListener("click", () => draftResourceField(source, field, draft, result));
+      row.append(title, draft);
+      if (field.current) {
+        const current = document.createElement("small");
+        current.textContent = `Current: ${field.current}`;
+        row.append(current);
+      }
+      row.append(result);
+      out.append(row);
+    }
+    provenance([`document ${source.file.name} (${source.read.pages ?? 1} page${source.read.pages === 1 ? "" : "s"})`,
+      source.read.truncated ? "document truncated" : "document read in full", `${source.fields.length} fields available; none drafted yet`]);
+  }
+
+  async function draftResourceField(source, field, button, resultNode) {
+    if (state.resourceDrafting) return;
+    state.resourceDrafting = true;
+    root.querySelectorAll(".resource-draft-button").forEach((node) => { node.disabled = true; });
+    button.textContent = `Drafting ${field.label}…`;
+    resultNode.textContent = "";
+    setState(`drafting one field: ${field.label}…`);
+    try {
+      const result = await suggestResourceField(ai, {
+        source: manifest?.app?.name || "unspecified host",
+        document: source.text,
+        field,
+        modelId: state.model,
+      });
+      if (!result.formatValid) {
+        resultNode.textContent = `No draft: ${result.error}${result.raw ? ` Model said: ${result.raw}` : ""}`;
+        setState(`No draft for ${field.label}.`, "warn");
+        return;
+      }
+      if (!result.supported) {
+        resultNode.textContent = `No suggestion for ${field.label}: ${result.reason}`;
+        setState(`Document does not support ${field.label}.`, "warn");
+        root.dispatchEvent(new CustomEvent("pslm-suggest", { bubbles: true, detail: {
+          task: result.task, model: state.model, engine: result.engine ?? null, recordId: root.dataset.recordId,
+          pointer: field.key, label: field.label, formatValid: true, suggestion: null, reason: result.reason,
+        } }));
+        return;
+      }
+      const value = document.createElement("p");
+      value.textContent = result.suggestion;
+      const reason = document.createElement("small");
+      reason.textContent = result.reason;
       const apply = document.createElement("button");
       apply.type = "button";
-      apply.textContent = `Fill ${entry.label}`;
+      apply.textContent = `Fill ${field.label}`;
       apply.addEventListener("click", () => {
         const accepted = !root.dispatchEvent(new CustomEvent("pslm-fill-request", {
           bubbles: true, cancelable: true,
-          detail: { task: result.task, recordId: root.dataset.recordId, pointer: entry.key, label: entry.label, suggestion: entry.value },
+          detail: { task: result.task, recordId: root.dataset.recordId, pointer: field.key, label: field.label, suggestion: result.suggestion },
         }));
-        apply.textContent = accepted ? `Filled ${entry.label}` : `No editor field for ${entry.label}`;
-        if (accepted) window.setTimeout(() => { apply.textContent = `Fill ${entry.label}`; }, 4000);
+        apply.textContent = accepted ? `Filled ${field.label}` : `Could not fill ${field.label}`;
       });
-      const why = document.createElement("i");
-      why.textContent = entry.reason;
-      row.append(title, apply, await renderMarkdown(entry.value), why);
-      out.append(row);
-    }
-    state.draft = null;
-    provenance([`task ${result.task}`, `model ${state.model}`, `document ${file.name} (${read.pages ?? 1} page${read.pages === 1 ? "" : "s"})`,
-      read.truncated ? "document truncated" : "document read in full", result.engine, "shape check only — not factual review"]);
-    root.dispatchEvent(new CustomEvent("pslm-suggest", {
-      bubbles: true,
-      detail: {
+      resultNode.replaceChildren(value, reason, apply);
+      provenance([`task ${result.task}`, `model ${state.model}`, `document ${source.file.name}`, `field ${field.key}`, result.engine,
+        "shape checked; factual review remains with curator"]);
+      root.dispatchEvent(new CustomEvent("pslm-suggest", { bubbles: true, detail: {
         task: result.task, model: state.model, engine: result.engine ?? null, recordId: root.dataset.recordId,
-        document: { name: file.name, bytes: file.size, kind: read.kind, truncated: Boolean(read.truncated) },
-        formatValid: true, entries: result.entries, dropped: result.dropped,
-      },
-    }));
-    setState(result.dropped ? `${result.entries.length} fields drafted, ${result.dropped} dropped` : `${result.entries.length} fields drafted`, "ok");
+        document: { name: source.file.name, bytes: source.file.size, kind: source.read.kind, truncated: Boolean(source.read.truncated) },
+        pointer: field.key, label: field.label, formatValid: true, suggestion: result.suggestion, reason: result.reason,
+      } }));
+      setState(`Drafted ${field.label}. Review it, then fill it or choose another field.`, "ok");
+    } catch (err) {
+      resultNode.textContent = `Could not draft ${field.label}: ${err.message}`;
+      setState(err.message, "err");
+    } finally {
+      state.resourceDrafting = false;
+      button.textContent = `Draft ${field.label}`;
+      root.querySelectorAll(".resource-draft-button").forEach((node) => { node.disabled = false; });
+    }
   }
 
   // A datafile mount adds one picker entry for the open file's Description; the host announces
@@ -706,6 +745,9 @@ function mount(root, { manifest, ai, version, base = window.location.origin, ass
   const revealClearButton = () => { $("[data-clear-models]").hidden = false; };
   $("[data-reload]").addEventListener("click", () => window.location.reload());
   $("[data-close]").addEventListener("click", () => { root.hidden = true; });
+  $("[data-pointers]").addEventListener("change", () => {
+    $("[data-suggest]").textContent = $("[data-pointers]").value === "@document" ? "Read attached document" : "Suggest improvement";
+  });
   $("[data-suggest]").addEventListener("click", suggest);
   $("[data-copy]").addEventListener("click", async (e) => {
     await navigator.clipboard.writeText(e.target.dataset.value || "");

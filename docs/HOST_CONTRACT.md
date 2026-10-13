@@ -231,9 +231,13 @@ Two consequences:
 |---|---|---|---|
 | `pslm.chat` | record snapshot + user message | streamed prose | formatted by the SDK into DOM, never into HTML: see §4b |
 | `pslm.suggest-field` | `{pointer, label, value}` + record snapshot | `{suggestion, reason}` JSON | `metadata-review` prompt, shape-checked, **decoration stripped**: see §4c |
+| `pslm.suggest-resource-description` | attached document text + one `{key, label, current, options?}` field | `{suggestion, reason}` JSON | one model call per field; same flat output shape as field suggestion; host offers one Draft button per field |
 
-Both keep today's fail-closed behaviour: unknown task id, malformed JSON, or oversized context is
-an error shown to the user, not a silent retry. These ids are the code-level identifiers now
+Malformed JSON or oversized context is reported, not silently turned into a fillable value. The resource
+suggestion accepts only one field per call, uses allowed `options` for controlled fields, and makes no
+model call just from reading the document. An empty constrained reply gets one retry without grammar;
+if still empty, panel reports no text. PDF parsing reads text layer only: scanned/image PDFs are refused,
+not OCRed. These ids are the code-level identifiers now
 (`TASKS` in `integrations/host-contract.js`): `validateManifest` rejects a manifest that names a
 task this build does not ship, and the panel builds its tabs from `allowsTask()`. A host's `tasks`
 list has teeth, before this, it was a comment.
@@ -389,7 +393,10 @@ document.addEventListener("pslm-document-request", (event) => {
   event.detail.file = input.files[0];
   event.detail.fields = [
     { key: "title", label: "Title", current: "" },
-    { key: "dctype", label: "Resource type", current: "doc/rep" },
+    { key: "dctype", label: "Resource type", current: "doc/rep", options: [
+      { value: "doc/qst", label: "Document, Questionnaire" },
+      { value: "doc/rep", label: "Document, Report" },
+    ] },
   ];
 });
 ```
@@ -397,14 +404,15 @@ document.addEventListener("pslm-document-request", (event) => {
 - **`file`** is the `File` the curator picked, read in this tab. A PDF is parsed by pdf.js here, so the
   document is not uploaded for the sake of a draft, and a draft abandoned before upload never left the
   browser. The parser is vendored and fetched only when a PDF is actually attached.
-- **`fields`** is the only list the model is told it may write into. Keys are identifier-shaped; a key
-  the host did not offer is dropped on the way back and counted, never displayed as if it were usable.
-  Current values are passed along so the model does not restate what the curator already typed.
+- **`fields`** tells the panel what is on screen. Each field has `key`, `label`, and optional `current`;
+  controlled lists also provide `options: [{value, label}]`, so model can choose only a value the form
+  accepts. Current values are passed so model need not restate what curator typed.
 - **`note`** refuses in a sentence the curator sees. That is how "no document attached yet" and "this
   PDF has no text layer" reach a person instead of surfacing as a parse error.
-- The answer arrives as one row per field with its own apply button, and every click is a separate
-  `pslm-fill-request`. There is deliberately no "fill everything": twelve inputs changed by one click
-  is a draft nobody reviewed, and the save button stays the curator's.
+- Reading a document does **not** call the model. It renders one `Draft <field>` button per field. Each
+  button press calls model once with that field only, using the same flat `{suggestion, reason}` output
+  contract as field suggestion. A valid suggestion then gets its own `Fill <field>` button and one
+  `pslm-fill-request`. No bulk generation, no bulk fill; curator reviews and saves.
 - Task id **`pslm.suggest-resource-description`**. A host that does not declare it gets no picker entry.
 
 a host's listener is a few dozen lines with no build step, and it is worth a runnable fixture: one that
